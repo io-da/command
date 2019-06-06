@@ -5,6 +5,8 @@ import (
 	"sync/atomic"
 )
 
+// Bus is the only struct exported and required for the command bus usage.
+// The Bus should be instantiated using the NewBus function.
 type Bus struct {
 	workerPoolSize     int
 	queueBuffer        int
