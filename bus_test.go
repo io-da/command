@@ -29,11 +29,22 @@ func TestBus_AsyncBuffer(t *testing.T) {
 func TestBus_Handle(t *testing.T) {
 	bus := NewBus()
 	hdl := &testHandler{}
+	hdlWErr := &testHandlerError{}
+	errHdl := &storeErrorsHandler{
+		errs: make(map[string]error),
+	}
 
-	bus.Initialize(hdl)
+	bus.ErrorHandlers(errHdl)
+	bus.Initialize(hdl, hdlWErr)
 	bus.Handle(&testCommand1{})
 	bus.Handle(&testCommand2{})
 	bus.Handle(testCommand3("test"))
+
+	errCmd := &testCommandError{}
+	bus.Handle(errCmd)
+	if err := errHdl.Error(errCmd); err == nil {
+		t.Error("Command was expected to throw an error.")
+	}
 }
 
 func TestBus_HandleAsync(t *testing.T) {

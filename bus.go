@@ -14,6 +14,7 @@ type Bus struct {
 	shuttingDown       *uint32
 	workers            *uint32
 	handlers           []Handler
+	errorHandlers      []ErrorHandler
 	asyncCommandsQueue chan Command
 	closed             chan bool
 }
@@ -27,6 +28,7 @@ func NewBus() *Bus {
 		initialized:    new(uint32),
 		shuttingDown:   new(uint32),
 		workers:        new(uint32),
+		errorHandlers:  make([]ErrorHandler, 0),
 		closed:         make(chan bool),
 	}
 }
@@ -47,6 +49,14 @@ func (bus *Bus) WorkerPoolSize(workerPoolSize int) {
 func (bus *Bus) QueueBuffer(queueBuffer int) {
 	if !bus.isInitialized() {
 		bus.queueBuffer = queueBuffer
+	}
+}
+
+// ErrorHandlers may optionally be provided.
+// They will receive any error thrown during the command process.
+func (bus *Bus) ErrorHandlers(hdls ...ErrorHandler) {
+	if !bus.isInitialized() {
+		bus.errorHandlers = hdls
 	}
 }
 
@@ -73,7 +83,11 @@ func (bus *Bus) HandleAsync(cmd Command) {
 // Handle the command synchronously.
 func (bus *Bus) Handle(cmd Command) {
 	for _, hdl := range bus.handlers {
-		hdl.Handle(cmd)
+		err := hdl.Handle(cmd)
+		if err != nil {
+			bus.error(cmd, err)
+			return
+		}
 	}
 }
 
@@ -124,4 +138,10 @@ func (bus *Bus) shutdown() {
 		bus.workerDown()
 	}
 	atomic.CompareAndSwapUint32(bus.initialized, 1, 0)
+}
+
+func (bus *Bus) error(qry Command, err error) {
+	for _, errHdl := range bus.errorHandlers {
+		errHdl.Handle(qry, err)
+	}
 }
