@@ -119,15 +119,12 @@ func TestBus_HandlerOrder(t *testing.T) {
 
 func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 	bus := NewBus()
-	wg := &sync.WaitGroup{}
 
-	bus.Initialize(&testHandlerAsync{wg: wg})
+	bus.Initialize(&testHandler{})
 	for n := 0; n < b.N; n++ {
-		wg.Add(1000000)
 		for i := 0; i < 1000000; i++ {
 			bus.Handle(&testCommand1{})
 		}
-		wg.Wait()
 	}
 }
 
