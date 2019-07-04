@@ -83,10 +83,8 @@ func (bus *Bus) HandleAsync(cmd Command) {
 // Handle the command synchronously.
 func (bus *Bus) Handle(cmd Command) {
 	for _, hdl := range bus.handlers {
-		err := hdl.Handle(cmd)
-		if err != nil {
+		if err := hdl.Handle(cmd); err != nil {
 			bus.error(cmd, err)
-			return
 		}
 	}
 }
