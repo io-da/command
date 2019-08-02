@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"runtime"
 	"sync/atomic"
 )
@@ -74,19 +75,20 @@ func (bus *Bus) Initialize(hdls ...Handler) {
 }
 
 // HandleAsync the command using the workers asynchronously.
-func (bus *Bus) HandleAsync(cmd Command) {
-	if cmd != nil && !bus.isShuttingDown() {
-		bus.asyncCommandsQueue <- cmd
+func (bus *Bus) HandleAsync(cmd Command) error {
+	if err := bus.isValid(cmd); err != nil {
+		return err
 	}
+	bus.asyncCommandsQueue <- cmd
+	return nil
 }
 
 // Handle the command synchronously.
-func (bus *Bus) Handle(cmd Command) {
-	for _, hdl := range bus.handlers {
-		if err := hdl.Handle(cmd); err != nil {
-			bus.error(cmd, err)
-		}
+func (bus *Bus) Handle(cmd Command) error {
+	if err := bus.isValid(cmd); err != nil {
+		return err
 	}
+	return bus.handle(cmd)
 }
 
 // Shutdown the command bus gracefully.
@@ -116,9 +118,19 @@ func (bus *Bus) worker(asyncCommandsQueue <-chan Command, closed chan<- bool) {
 		if cmd == nil {
 			break
 		}
-		bus.Handle(cmd)
+		_ = bus.handle(cmd)
 	}
 	closed <- true
+}
+
+func (bus *Bus) handle(cmd Command) error {
+	for _, hdl := range bus.handlers {
+		if err := hdl.Handle(cmd); err != nil {
+			bus.error(cmd, err)
+			return err
+		}
+	}
+	return nil
 }
 
 func (bus *Bus) workerUp() {
@@ -136,6 +148,26 @@ func (bus *Bus) shutdown() {
 		bus.workerDown()
 	}
 	atomic.CompareAndSwapUint32(bus.initialized, 1, 0)
+}
+
+func (bus *Bus) isValid(cmd Command) error {
+	var err error
+	if cmd == nil {
+		err = errors.New("invalid command")
+		bus.error(cmd, err)
+		return err
+	}
+	if !bus.isInitialized() {
+		err = errors.New("the command bus is not initialized")
+		bus.error(cmd, err)
+		return err
+	}
+	if bus.isShuttingDown() {
+		err = errors.New("the command bus is shutting down")
+		bus.error(cmd, err)
+		return err
+	}
+	return nil
 }
 
 func (bus *Bus) error(qry Command, err error) {

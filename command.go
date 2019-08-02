@@ -1,6 +1,6 @@
 package command
 
-// Command is an empty interface used for reference and readability purposes.
+// Command is the interface that must be implemented by any type to be considered a command.
 type Command interface {
-	Id() []byte
+	ID() []byte
 }

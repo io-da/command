@@ -33,15 +33,26 @@ func TestBus_Handle(t *testing.T) {
 	errHdl := &storeErrorsHandler{
 		errs: make(map[string]error),
 	}
-
 	bus.ErrorHandlers(errHdl)
+
+	_ = bus.Handle(nil)
+	if err := errHdl.Error(nil); err == nil {
+		t.Error("A nil command is expected to throw an error.")
+	}
+
+	cmd := &testCommand1{}
+	_ = bus.Handle(cmd)
+	if err := errHdl.Error(cmd); err == nil {
+		t.Error("This command is expected to throw an error since the bus is not initialized yet.")
+	}
+
 	bus.Initialize(hdl, hdlWErr)
-	bus.Handle(&testCommand1{})
-	bus.Handle(&testCommand2{})
-	bus.Handle(testCommand3("test"))
+	_ = bus.Handle(&testCommand1{})
+	_ = bus.Handle(&testCommand2{})
+	_ = bus.Handle(testCommand3("test"))
 
 	errCmd := &testCommandError{}
-	bus.Handle(errCmd)
+	_ = bus.Handle(errCmd)
 	if err := errHdl.Error(errCmd); err == nil {
 		t.Error("Command was expected to throw an error.")
 	}
@@ -55,9 +66,9 @@ func TestBus_HandleAsync(t *testing.T) {
 
 	wg.Add(3)
 	bus.Initialize(hdl)
-	bus.HandleAsync(&testCommand1{})
-	bus.HandleAsync(&testCommand2{})
-	bus.HandleAsync(testCommand3("test"))
+	_ = bus.HandleAsync(&testCommand1{})
+	_ = bus.HandleAsync(&testCommand2{})
+	_ = bus.HandleAsync(testCommand3("test"))
 
 	timeout := time.AfterFunc(time.Second*10, func() {
 		t.Fatal("The commands should have been handled by now.")
@@ -75,7 +86,7 @@ func TestBus_Shutdown(t *testing.T) {
 	wg.Add(1)
 
 	bus.Initialize(hdl)
-	bus.HandleAsync(&testCommand1{})
+	_ = bus.HandleAsync(&testCommand1{})
 	time.AfterFunc(time.Nanosecond, func() {
 		// graceful shutdown
 		bus.Shutdown()
@@ -83,7 +94,7 @@ func TestBus_Shutdown(t *testing.T) {
 	})
 
 	for i := 0; i < 1000; i++ {
-		bus.HandleAsync(&testCommand1{})
+		_ = bus.HandleAsync(&testCommand1{})
 	}
 	wg.Wait()
 
@@ -104,7 +115,7 @@ func TestBus_HandlerOrder(t *testing.T) {
 	bus.Initialize(hdls...)
 
 	cmd := &testHandlerOrderCommand{position: new(uint32), unordered: new(uint32)}
-	bus.HandleAsync(cmd)
+	_ = bus.HandleAsync(cmd)
 
 	timeout := time.AfterFunc(time.Second*10, func() {
 		t.Fatal("The commands should have been handled by now.")
@@ -123,7 +134,7 @@ func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 	bus.Initialize(&testHandler{})
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < 1000000; i++ {
-			bus.Handle(&testCommand1{})
+			_ = bus.Handle(&testCommand1{})
 		}
 	}
 }
@@ -136,7 +147,7 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		wg.Add(1000000)
 		for i := 0; i < 1000000; i++ {
-			bus.HandleAsync(&testCommand1{})
+			_ = bus.HandleAsync(&testCommand1{})
 		}
 		wg.Wait()
 	}

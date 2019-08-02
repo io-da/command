@@ -12,27 +12,27 @@ import (
 type testCommand1 struct {
 }
 
-func (*testCommand1) Id() []byte {
+func (*testCommand1) ID() []byte {
 	return []byte("UUID")
 }
 
 type testCommand2 struct {
 }
 
-func (*testCommand2) Id() []byte {
+func (*testCommand2) ID() []byte {
 	return []byte("UUID")
 }
 
 type testCommand3 string
 
-func (testCommand3) Id() []byte {
+func (testCommand3) ID() []byte {
 	return []byte("UUID")
 }
 
 type testCommandError struct {
 }
 
-func (*testCommandError) Id() []byte {
+func (*testCommandError) ID() []byte {
 	return []byte("UUID")
 }
 
@@ -51,7 +51,7 @@ func (cmd *testHandlerOrderCommand) HandlerPosition(position uint32) {
 func (cmd *testHandlerOrderCommand) IsUnordered() bool {
 	return atomic.LoadUint32(cmd.unordered) == 1
 }
-func (*testHandlerOrderCommand) Id() []byte {
+func (*testHandlerOrderCommand) ID() []byte {
 	return []byte("UUID")
 }
 
@@ -108,16 +108,28 @@ func (hdl *testHandlerOrder) Handle(cmd Command) error {
 //------Error Handlers------//
 
 type storeErrorsHandler struct {
+	sync.Mutex
 	errs map[string]error
 }
 
 func (hdl *storeErrorsHandler) Handle(cmd Command, err error) {
-	hdl.errs[string(cmd.Id())] = err
+	hdl.Lock()
+	hdl.errs[hdl.key(cmd)] = err
+	hdl.Unlock()
 }
 
 func (hdl *storeErrorsHandler) Error(cmd Command) error {
-	if err, hasError := hdl.errs[string(cmd.Id())]; hasError {
+	hdl.Lock()
+	defer hdl.Unlock()
+	if err, hasError := hdl.errs[hdl.key(cmd)]; hasError {
 		return err
 	}
 	return nil
+}
+
+func (hdl *storeErrorsHandler) key(cmd Command) string {
+	if cmd == nil {
+		return "nil"
+	}
+	return string(cmd.ID())
 }

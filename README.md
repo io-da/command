@@ -1,5 +1,5 @@
 # [Go](https://golang.org/) Command Bus
-A command bus developed with a focus on utility and performance.  
+A command bus to demand all the things.  
 
 [![Build Status](https://travis-ci.org/io-da/command.svg?branch=master)](https://travis-ci.org/io-da/command)
 [![Maintainability](https://api.codeclimate.com/v1/badges/320d3b5a036178276900/maintainability)](https://codeclimate.com/github/io-da/command/maintainability)
@@ -10,13 +10,14 @@ A command bus developed with a focus on utility and performance.
 ``` go get github.com/io-da/command ```
 
 ## Overview
-1. [Commands](#Commands)
-2. [Handlers](#Handlers)
-3. [The Bus](#The-Bus)  
-   1. [Tweaking Performance](#Tweaking-Performance)  
-   2. [Shutting Down](#Shutting-Down)  
-4. [Benchmarks](#Benchmarks)
-5. [Examples](#Examples)
+0. [Commands](#Commands)
+0. [Handlers](#Handlers)
+0. [Error Handlers](#Error-Handlers)
+0. [The Bus](#The-Bus)  
+   0. [Tweaking Performance](#Tweaking-Performance)  
+   0. [Shutting Down](#Shutting-Down)  
+0. [Benchmarks](#Benchmarks)
+0. [Examples](#Examples)
 
 ## Introduction
 This library is intended for anyone looking to trigger application commands in a decoupled architecture.  
@@ -26,15 +27,29 @@ Clean and simple codebase. **No reflection, no closures.**
 ## Getting Started
 
 ### Commands
-Commands can be of any type. Ideally they should contain immutable data.  
+Commands are any type that implements the _Command_ interface. Ideally they should contain immutable data.  
+```go
+type Command interface {
+    ID() []byte
+}
+```
 
 ### Handlers
 Handlers are any type that implements the _Handler_ interface. Handlers must be instantiated and provided to the bus on initialization.    
 ```go
 type Handler interface {
-    Handle(cmd Command)
+    Handle(cmd Command) error
 }
 ```
+
+### Error Handlers
+Error handlers are any type that implements the _ErrorHandler_ interface. Error handlers are optional (but advised) and provided to the bus using the ```bus.ErrorHandlers``` function.  
+```go
+type ErrorHandler interface {
+    Handle(evt Event, err error)
+}
+```
+Any time an error occurs within the bus, it will be passed on to the error handlers. This strategy can be used for decoupled error handling.
 
 ### The Bus
 _Bus_ is the _struct_ that will be used to trigger all the application's commands.  
@@ -84,11 +99,17 @@ A simple ```struct``` command.
 type Foo struct {
     bar string
 }
+func (*Foo) ID() []byte {
+    return []byte("FOO-UUID")
+}
 ```
 
 A ```string``` command.
 ```go
-type FooBar string
+type Bar string
+func (Bar) ID() []byte {
+    return []byte("BAR-UUID")
+}
 ```
 
 #### Example Handlers
@@ -97,8 +118,9 @@ A command handler that logs every command triggered.
 type LoggerHandler struct {
 }
 
-func (hdl *LoggerHandler) Handle(cmd Command) {
+func (hdl *LoggerHandler) Handle(cmd Command) error {
     log.Printf("command %T emitted", cmd)
+    return nil
 }
 ```
 
@@ -107,12 +129,13 @@ A command handler that listens to multiple command types.
 type FooBarHandler struct {
 }
 
-func (hdl *FooBarHandler) Handle(cmd Command) {
+func (hdl *FooBarHandler) Handle(cmd Command) error {
     // a convenient way to assert multiple command types.
     switch cmd := cmd.(type) {
-    case *Foo, FooBar:
+    case *Foo, Bar:
         // handler logic
     }
+    return nil
 }
 ```
 
@@ -137,7 +160,7 @@ func main() {
     
     // trigger commands!
     bus.Handle(&Foo{})
-    bus.Handle(FooBar("foobar"))
+    bus.Handle(Bar("bar"))
 }
 ```
 
