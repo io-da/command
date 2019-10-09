@@ -1,7 +1,6 @@
 package command
 
 import (
-	"errors"
 	"runtime"
 	"sync/atomic"
 )
@@ -153,17 +152,17 @@ func (bus *Bus) shutdown() {
 func (bus *Bus) isValid(cmd Command) error {
 	var err error
 	if cmd == nil {
-		err = errors.New("invalid command")
+		err = InvalidCommandError
 		bus.error(cmd, err)
 		return err
 	}
 	if !bus.isInitialized() {
-		err = errors.New("the command bus is not initialized")
+		err = CommandBusNotInitializedError
 		bus.error(cmd, err)
 		return err
 	}
 	if bus.isShuttingDown() {
-		err = errors.New("the command bus is shutting down")
+		err = CommandBusIsShuttingDownError
 		bus.error(cmd, err)
 		return err
 	}
