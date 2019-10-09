@@ -89,7 +89,7 @@ Below is a list of errors that can occur when calling ```bus.HandleAsync or bus.
 // command.ErrorCommandBusNotInitialized
 // command.ErrorCommandBusIsShuttingDown
 
-if err := bus.handle(&Command{}); err != nil {
+if err := bus.Handle(&Command{}); err != nil {
     switch(err.(type)) {
         case command.ErrorInvalidCommand:
             // do something
