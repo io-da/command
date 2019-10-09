@@ -20,6 +20,12 @@ type Bus struct {
 	closed             chan bool
 }
 
+const (
+	ErrorInvalidCommand           = "invalid command"
+	ErrorCommandBusNotInitialized = "the command bus is not initialized"
+	ErrorCommandBusIsShuttingDown = "the command bus is shutting down"
+)
+
 // NewBus instantiates the Bus struct.
 // The Initialization of the Bus is performed separately (Initialize function) for dependency injection purposes.
 func NewBus() *Bus {
@@ -153,17 +159,17 @@ func (bus *Bus) shutdown() {
 func (bus *Bus) isValid(cmd Command) error {
 	var err error
 	if cmd == nil {
-		err = errors.New("invalid command")
+		err = errors.New(ErrorInvalidCommand)
 		bus.error(cmd, err)
 		return err
 	}
 	if !bus.isInitialized() {
-		err = errors.New("the command bus is not initialized")
+		err = errors.New(ErrorCommandBusNotInitialized)
 		bus.error(cmd, err)
 		return err
 	}
 	if bus.isShuttingDown() {
-		err = errors.New("the command bus is shutting down")
+		err = errors.New(ErrorCommandBusIsShuttingDown)
 		bus.error(cmd, err)
 		return err
 	}
