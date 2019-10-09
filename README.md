@@ -84,10 +84,24 @@ bus.Shutdown()
 
 #### Available Errors
 Below is a list of errors that can occur when calling ```bus.HandleAsync or bus.Handle```.  
-```
-command.ErrorInvalidCommand
-command.ErrorCommandBusNotInitialized
-command.ErrorCommandBusIsShuttingDown
+```go
+// command.ErrorInvalidCommand
+// command.ErrorCommandBusNotInitialized
+// command.ErrorCommandBusIsShuttingDown
+
+if err := bus.handle(&Command{}); err != nil {
+    switch(err.(type)) {
+        case command.ErrorInvalidCommand:
+            // do something
+        case command.CommandBusNotInitializedError:
+            // do something
+        case command.CommandBusIsShuttingDownError:
+            // do something
+        default:
+            // do something
+    }
+}
+
 ```
 ## Benchmarks
 All the benchmarks are performed against batches of 1 million commands.  

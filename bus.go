@@ -1,7 +1,6 @@
 package command
 
 import (
-	"errors"
 	"runtime"
 	"sync/atomic"
 )
@@ -19,12 +18,6 @@ type Bus struct {
 	asyncCommandsQueue chan Command
 	closed             chan bool
 }
-
-const (
-	ErrorInvalidCommand           = "invalid command"
-	ErrorCommandBusNotInitialized = "the command bus is not initialized"
-	ErrorCommandBusIsShuttingDown = "the command bus is shutting down"
-)
 
 // NewBus instantiates the Bus struct.
 // The Initialization of the Bus is performed separately (Initialize function) for dependency injection purposes.
@@ -159,17 +152,17 @@ func (bus *Bus) shutdown() {
 func (bus *Bus) isValid(cmd Command) error {
 	var err error
 	if cmd == nil {
-		err = errors.New(ErrorInvalidCommand)
+		err = ErrorInvalidCommand(InvalidCommandError)
 		bus.error(cmd, err)
 		return err
 	}
 	if !bus.isInitialized() {
-		err = errors.New(ErrorCommandBusNotInitialized)
+		err = ErrorCommandBusNotInitialized(CommandBusNotInitializedError)
 		bus.error(cmd, err)
 		return err
 	}
 	if bus.isShuttingDown() {
-		err = errors.New(ErrorCommandBusIsShuttingDown)
+		err = ErrorCommandBusIsShuttingDown(CommandBusIsShuttingDownError)
 		bus.error(cmd, err)
 		return err
 	}
