@@ -16,6 +16,7 @@ A command bus to demand all the things.
 4. [The Bus](#The-Bus)  
    1. [Tweaking Performance](#Tweaking-Performance)  
    2. [Shutting Down](#Shutting-Down)  
+   3. [Available Errors](#Available-Errors)
 5. [Benchmarks](#Benchmarks)
 6. [Examples](#Examples)
 
@@ -81,6 +82,13 @@ bus.Shutdown()
 ```  
 **This function will block until the bus is fully stopped.**
 
+#### Available Errors
+Below is a list of errors that can occur when calling ```bus.HandleAsync or bus.Handle```.  
+```
+command.ErrorInvalidCommand
+command.ErrorCommandBusNotInitialized
+command.ErrorCommandBusIsShuttingDown
+```
 ## Benchmarks
 All the benchmarks are performed against batches of 1 million commands.  
 All the benchmarks contain some overhead due to the usage of _sync.WaitGroup_.  
