@@ -1,11 +1,5 @@
 package command
 
-const (
-	InvalidCommandError           = "command: invalid command"
-	CommandBusNotInitializedError = "command: the command bus is not initialized"
-	CommandBusIsShuttingDownError = "command: the command bus is shutting down"
-)
-
 type ErrorInvalidCommand string
 
 func (e ErrorInvalidCommand) Error() string {
@@ -23,3 +17,9 @@ type ErrorCommandBusIsShuttingDown string
 func (e ErrorCommandBusIsShuttingDown) Error() string {
 	return string(e)
 }
+
+const (
+	InvalidCommandError           = ErrorInvalidCommand("command: invalid command")
+	CommandBusNotInitializedError = ErrorCommandBusNotInitialized("command: the command bus is not initialized")
+	CommandBusIsShuttingDownError = ErrorCommandBusIsShuttingDown("command: the command bus is shutting down")
+)

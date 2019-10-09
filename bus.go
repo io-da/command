@@ -152,17 +152,17 @@ func (bus *Bus) shutdown() {
 func (bus *Bus) isValid(cmd Command) error {
 	var err error
 	if cmd == nil {
-		err = ErrorInvalidCommand(InvalidCommandError)
+		err = InvalidCommandError
 		bus.error(cmd, err)
 		return err
 	}
 	if !bus.isInitialized() {
-		err = ErrorCommandBusNotInitialized(CommandBusNotInitializedError)
+		err = CommandBusNotInitializedError
 		bus.error(cmd, err)
 		return err
 	}
 	if bus.isShuttingDown() {
-		err = ErrorCommandBusIsShuttingDown(CommandBusIsShuttingDownError)
+		err = CommandBusIsShuttingDownError
 		bus.error(cmd, err)
 		return err
 	}
