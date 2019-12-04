@@ -29,21 +29,26 @@ func TestBus_AsyncBuffer(t *testing.T) {
 func TestBus_Handle(t *testing.T) {
 	bus := NewBus()
 	hdl := &testHandler{}
+
 	hdlWErr := &testHandlerError{}
 	errHdl := &storeErrorsHandler{
 		errs: make(map[string]error),
 	}
 	bus.ErrorHandlers(errHdl)
 
-	_ = bus.Handle(nil)
-	if err := errHdl.Error(nil); err == nil {
-		t.Error("A nil command is expected to throw an error.")
+	err := bus.Handle(nil)
+	if err == nil || err != InvalidCommandError {
+		t.Error("Expected InvalidCommandError error.")
+	} else if err.Error() != "command: invalid command" {
+		t.Error("Unexpected InvalidCommandError message.")
 	}
 
 	cmd := &testCommand1{}
-	_ = bus.Handle(cmd)
-	if err := errHdl.Error(cmd); err == nil {
-		t.Error("This command is expected to throw an error since the bus is not initialized yet.")
+	err = bus.Handle(cmd)
+	if err == nil || err != BusNotInitializedError {
+		t.Error("Expected BusNotInitializedError error.")
+	} else if err.Error() != "command: the bus is not initialized" {
+		t.Error("Unexpected BusNotInitializedError message.")
 	}
 
 	bus.Initialize(hdl, hdlWErr)
@@ -54,7 +59,7 @@ func TestBus_Handle(t *testing.T) {
 	errCmd := &testCommandError{}
 	_ = bus.Handle(errCmd)
 	if err := errHdl.Error(errCmd); err == nil {
-		t.Error("Command was expected to throw an error.")
+		t.Error("Command handler was expected to throw an error.")
 	}
 }
 
@@ -87,20 +92,26 @@ func TestBus_Shutdown(t *testing.T) {
 
 	bus.Initialize(hdl)
 	_ = bus.HandleAsync(&testCommand1{})
-	time.AfterFunc(time.Nanosecond, func() {
+	time.AfterFunc(time.Microsecond, func() {
 		// graceful shutdown
 		bus.Shutdown()
 		wg.Done()
 	})
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		_ = bus.HandleAsync(&testCommand1{})
 	}
-	wg.Wait()
-
+	time.Sleep(time.Microsecond)
 	if !bus.isShuttingDown() {
 		t.Error("The bus should be shutting down.")
 	}
+	err := bus.Handle(&testCommand1{})
+	if err == nil || err != BusIsShuttingDownError {
+		t.Error("Expected BusIsShuttingDownError error.")
+	} else if err.Error() != "command: the bus is shutting down" {
+		t.Error("Unexpected BusIsShuttingDownError message.")
+	}
+	wg.Wait()
 }
 
 func TestBus_HandlerOrder(t *testing.T) {
