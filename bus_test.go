@@ -90,6 +90,7 @@ func TestBus_Shutdown(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
+	bus.WorkerPoolSize(1337)
 	bus.Initialize(hdl)
 	_ = bus.HandleAsync(&testCommand1{})
 	time.AfterFunc(time.Microsecond, func() {
