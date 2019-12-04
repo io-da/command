@@ -90,6 +90,15 @@ func (bus *Bus) Handle(cmd Command) error {
 	return bus.handle(cmd)
 }
 
+//func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) error {
+//	if err := bus.isValid(cmd); err != nil {
+//		return err
+//	}
+//	// todo add command to Calendar(?). Calendar will then ensure the command gets triggered based on his schedule.
+//
+//	return nil
+//}
+
 // Shutdown the command bus gracefully.
 // *Async commands handled while shutting down will be disregarded*.
 func (bus *Bus) Shutdown() {
