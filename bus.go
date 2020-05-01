@@ -69,7 +69,6 @@ func (bus *Bus) Initialize(hdls ...Handler) {
 			bus.workerUp()
 			go bus.worker(bus.asyncCommandsQueue, bus.closed)
 		}
-		atomic.CompareAndSwapUint32(bus.shuttingDown, 1, 0)
 	}
 }
 
@@ -156,6 +155,7 @@ func (bus *Bus) shutdown() {
 		bus.workerDown()
 	}
 	atomic.CompareAndSwapUint32(bus.initialized, 1, 0)
+	atomic.CompareAndSwapUint32(bus.shuttingDown, 1, 0)
 }
 
 func (bus *Bus) isValid(cmd Command) error {
@@ -166,12 +166,12 @@ func (bus *Bus) isValid(cmd Command) error {
 		return err
 	}
 	if !bus.isInitialized() {
-		err = CommandBusNotInitializedError
+		err = BusNotInitializedError
 		bus.error(cmd, err)
 		return err
 	}
 	if bus.isShuttingDown() {
-		err = CommandBusIsShuttingDownError
+		err = BusIsShuttingDownError
 		bus.error(cmd, err)
 		return err
 	}
