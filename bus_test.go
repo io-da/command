@@ -113,7 +113,7 @@ func TestBus_HandleScheduled(t *testing.T) {
 	})
 
 	wg.Wait()
-	bus.scheduleProcessor.remove(*uuid1, *uuid2)
+	bus.RemoveScheduled(*uuid1, *uuid2)
 	if len(bus.scheduleProcessor.scheduledCommands) > 0 {
 		t.Error("The scheduled commands should be empty.")
 	}

@@ -17,6 +17,7 @@ A command bus to demand all the things.
    1. [Tweaking Performance](#Tweaking-Performance)  
    2. [Shutting Down](#Shutting-Down)  
    3. [Available Errors](#Available-Errors)
+   3. [Scheduled Commands](#Scheduled-Commands)
 5. [Benchmarks](#Benchmarks)
 6. [Examples](#Examples)
 
@@ -101,8 +102,12 @@ if err := bus.Handle(&Command{}); err != nil {
             // do something
     }
 }
-
 ```
+
+#### Scheduled Commands
+Since ```1.2```, the bus also has built in support for ```github.com/io-da/schedule```.  
+Using ```bus.Schedule```, one may schedule a command to be processed at certain times or even following a cron like pattern.
+
 ## Benchmarks
 All the benchmarks are performed against batches of 1 million commands.  
 All the benchmarks contain some overhead due to the usage of _sync.WaitGroup_.  
@@ -181,8 +186,14 @@ func main() {
     )
     
     // trigger commands!
+    // now
     bus.Handle(&Foo{})
-    bus.Handle(Bar("bar"))
+    // now async
+    bus.HandleAsync(&Foo{})
+    // scheduled to run every day
+    sch := schedule.At(time.Now())
+    sch.Cron(schedule.Cron().EveryDay())
+    bus.Schedule(&Foo{}, sch)
 }
 ```
 

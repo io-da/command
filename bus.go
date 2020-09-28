@@ -94,12 +94,18 @@ func (bus *Bus) Handle(cmd Command) error {
 	return bus.handle(cmd)
 }
 
+// Schedule allows commands to be scheduled to be executed asynchronously.
 func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) (*uuid.UUID, error) {
 	if err := bus.isValid(cmd); err != nil {
 		return nil, err
 	}
 	key := bus.scheduleProcessor.add(newScheduledCommand(cmd, sch))
 	return &key, nil
+}
+
+// RemoveScheduled removes previously scheduled commands.
+func (bus *Bus) RemoveScheduled(keys ...uuid.UUID) {
+	bus.scheduleProcessor.remove(keys...)
 }
 
 // Shutdown the command bus gracefully.
