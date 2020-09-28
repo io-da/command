@@ -1,0 +1,4 @@
+github.com/google/uuid v1.1.2 h1:EVhdT+1Kseyi1/pUmXKaFxYsDNy9RQYkMWRH68J/W7Y=
+github.com/google/uuid v1.1.2/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/io-da/schedule v1.0.2 h1:JKtrC7AVBX2ThiLXpDv3J8+xqbyCMHdI+nzeA16Ak5w=
+github.com/io-da/schedule v1.0.2/go.mod h1:Uf7nUIFoSRibe76mLVku/sIKcb5FfTervI1PsBb4Wks=

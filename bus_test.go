@@ -1,6 +1,7 @@
 package command
 
 import (
+	"github.com/io-da/schedule"
 	"sync"
 	"testing"
 	"time"
@@ -83,6 +84,42 @@ func TestBus_HandleAsync(t *testing.T) {
 	timeout.Stop()
 }
 
+func TestBus_HandleScheduled(t *testing.T) {
+	bus := NewBus()
+	bus.WorkerPoolSize(4)
+	wg := &sync.WaitGroup{}
+	hdl := &testHandlerScheduledAsync{wg: wg}
+	wg.Add(1000)
+
+	_, err := bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
+	if err == nil || err != BusNotInitializedError {
+		t.Error("Expected BusNotInitializedError error.")
+	} else if err.Error() != "command: the bus is not initialized" {
+		t.Error("Unexpected BusNotInitializedError message.")
+	}
+	bus.Initialize(hdl)
+
+	_, _ = bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
+
+	sch := schedule.At(time.Now())
+	sch2 := *sch
+	sch.Cron(schedule.Cron().OnMilliseconds(schedule.Between(0, 998).Every(2)))
+	uuid1, _ := bus.Schedule(&testCommand1{}, sch)
+	sch2.Cron(schedule.Cron().OnMilliseconds(schedule.Between(1, 999).Every(2)))
+	uuid2, _ := bus.Schedule(&testCommand2{}, &sch2)
+
+	timeout := time.AfterFunc(time.Second*5, func() {
+		t.Fatal("The commands should have been handled by now.")
+	})
+
+	wg.Wait()
+	bus.scheduleProcessor.remove(*uuid1, *uuid2)
+	if len(bus.scheduleProcessor.scheduledCommands) > 0 {
+		t.Error("The scheduled commands should be empty.")
+	}
+	timeout.Stop()
+}
+
 func TestBus_Shutdown(t *testing.T) {
 	bus := NewBus()
 	hdl := &testHandler{}
@@ -93,24 +130,26 @@ func TestBus_Shutdown(t *testing.T) {
 	bus.WorkerPoolSize(1337)
 	bus.Initialize(hdl)
 	_ = bus.HandleAsync(&testCommand1{})
-	time.AfterFunc(time.Microsecond, func() {
-		// graceful shutdown
-		bus.Shutdown()
-		wg.Done()
-	})
-
-	for i := 0; i < 10000; i++ {
+	bus.Shutdown()
+	for i := 0; i < 1000; i++ {
 		_ = bus.HandleAsync(&testCommand1{})
 	}
-	time.Sleep(time.Microsecond)
-	if !bus.isShuttingDown() {
-		t.Error("The bus should be shutting down.")
-	}
-	err := bus.Handle(&testCommand1{})
-	if err == nil || err != BusIsShuttingDownError {
-		t.Error("Expected BusIsShuttingDownError error.")
-	} else if err.Error() != "command: the bus is shutting down" {
-		t.Error("Unexpected BusIsShuttingDownError message.")
+	go func() {
+		// graceful shutdown
+		if !bus.isShuttingDown() {
+			t.Error("The bus should be shutting down.")
+		}
+		err := bus.Handle(&testCommand1{})
+		if err == nil || err != BusIsShuttingDownError {
+			t.Error("Expected BusIsShuttingDownError error.")
+		} else if err.Error() != "command: the bus is shutting down" {
+			t.Error("Unexpected BusIsShuttingDownError message.")
+		}
+		wg.Done()
+	}()
+
+	for bus.isShuttingDown() {
+		time.Sleep(time.Microsecond)
 	}
 	wg.Wait()
 }

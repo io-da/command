@@ -92,6 +92,19 @@ func (hdl *testHandlerAsync) Handle(cmd Command) error {
 	return nil
 }
 
+type testHandlerScheduledAsync struct {
+	wg *sync.WaitGroup
+}
+
+func (hdl *testHandlerScheduledAsync) Handle(cmd Command) error {
+	switch cmd.(type) {
+	case *testCommand1, *testCommand2, testCommand3:
+		time.Sleep(time.Nanosecond * 200)
+		hdl.wg.Done()
+	}
+	return nil
+}
+
 type testHandlerOrder struct {
 	wg       *sync.WaitGroup
 	position uint32

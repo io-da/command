@@ -1,6 +1,8 @@
 package command
 
 import (
+	"github.com/google/uuid"
+	"github.com/io-da/schedule"
 	"runtime"
 	"sync/atomic"
 )
@@ -17,12 +19,13 @@ type Bus struct {
 	errorHandlers      []ErrorHandler
 	asyncCommandsQueue chan Command
 	closed             chan bool
+	scheduleProcessor  *scheduleProcessor
 }
 
 // NewBus instantiates the Bus struct.
 // The Initialization of the Bus is performed separately (Initialize function) for dependency injection purposes.
 func NewBus() *Bus {
-	return &Bus{
+	bus := &Bus{
 		workerPoolSize: runtime.GOMAXPROCS(0),
 		queueBuffer:    100,
 		initialized:    new(uint32),
@@ -31,6 +34,8 @@ func NewBus() *Bus {
 		errorHandlers:  make([]ErrorHandler, 0),
 		closed:         make(chan bool),
 	}
+	bus.scheduleProcessor = newScheduleProcessor(bus)
+	return bus
 }
 
 // WorkerPoolSize may optionally be provided to tweak the worker pool size for async commands.
@@ -89,20 +94,19 @@ func (bus *Bus) Handle(cmd Command) error {
 	return bus.handle(cmd)
 }
 
-//func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) error {
-//	if err := bus.isValid(cmd); err != nil {
-//		return err
-//	}
-//	// todo add command to Calendar(?). Calendar will then ensure the command gets triggered based on his schedule.
-//
-//	return nil
-//}
+func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) (*uuid.UUID, error) {
+	if err := bus.isValid(cmd); err != nil {
+		return nil, err
+	}
+	key := bus.scheduleProcessor.add(newScheduledCommand(cmd, sch))
+	return &key, nil
+}
 
 // Shutdown the command bus gracefully.
 // *Async commands handled while shutting down will be disregarded*.
 func (bus *Bus) Shutdown() {
 	if atomic.CompareAndSwapUint32(bus.shuttingDown, 0, 1) {
-		bus.shutdown()
+		go bus.shutdown()
 	}
 }
 
@@ -154,6 +158,7 @@ func (bus *Bus) shutdown() {
 		<-bus.closed
 		bus.workerDown()
 	}
+	bus.scheduleProcessor.shutdown()
 	atomic.CompareAndSwapUint32(bus.initialized, 1, 0)
 	atomic.CompareAndSwapUint32(bus.shuttingDown, 1, 0)
 }
@@ -178,8 +183,8 @@ func (bus *Bus) isValid(cmd Command) error {
 	return nil
 }
 
-func (bus *Bus) error(qry Command, err error) {
+func (bus *Bus) error(cmd Command, err error) {
 	for _, errHdl := range bus.errorHandlers {
-		errHdl.Handle(qry, err)
+		errHdl.Handle(cmd, err)
 	}
 }
