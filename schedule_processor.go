@@ -85,7 +85,7 @@ func (pro *scheduleProcessor) process() {
 }
 
 func (pro *scheduleProcessor) trigger() {
-	pro.triggerSignal <- true
+	select { case pro.triggerSignal <- true:default:}
 }
 
 func (pro *scheduleProcessor) updateSleepUntil(nextTrigger time.Time) {
