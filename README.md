@@ -191,8 +191,7 @@ func main() {
     // now async
     bus.HandleAsync(&Foo{})
     // scheduled to run every day
-    sch := schedule.At(time.Now())
-    sch.Cron(schedule.Cron().EveryDay())
+    sch := schedule.As(schedule.Cron().EveryDay())
     bus.Schedule(&Foo{}, sch)
 }
 ```
