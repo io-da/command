@@ -103,9 +103,9 @@ func TestBus_HandleScheduled(t *testing.T) {
 
 	sch := schedule.At(time.Now())
 	sch2 := *sch
-	sch.Cron(schedule.Cron().OnMilliseconds(schedule.Between(0, 998).Every(2)))
+	sch.AddCron(schedule.Cron().OnMilliseconds(schedule.Between(0, 998).Every(2)))
 	uuid1, _ := bus.Schedule(&testCommand1{}, sch)
-	sch2.Cron(schedule.Cron().OnMilliseconds(schedule.Between(1, 999).Every(2)))
+	sch2.AddCron(schedule.Cron().OnMilliseconds(schedule.Between(1, 999).Every(2)))
 	uuid2, _ := bus.Schedule(&testCommand2{}, &sch2)
 
 	timeout := time.AfterFunc(time.Second*5, func() {
