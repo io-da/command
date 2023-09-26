@@ -8,3 +8,5 @@ github.com/io-da/schedule v1.1.0 h1:vBgPUwh+T9BwDsCqfWTdkRLfLnWs+Zr5w4bXNVw/OyE=
 github.com/io-da/schedule v1.1.0/go.mod h1:Uf7nUIFoSRibe76mLVku/sIKcb5FfTervI1PsBb4Wks=
 github.com/io-da/schedule v1.1.2 h1:s4liF1GAjJXi0ahEVLh2vSnEYxCqbji9ZyUtsvOT+TY=
 github.com/io-da/schedule v1.1.2/go.mod h1:5yfF28HYLrTCMZ7OaZbIys6XxqQfEZzfvDbxTSHR08o=
+github.com/io-da/schedule v1.1.3 h1:zz38RlaliLz4KFOQmELCE5CIuzg4IPx5rYBB+Wg+nsI=
+github.com/io-da/schedule v1.1.3/go.mod h1:5yfF28HYLrTCMZ7OaZbIys6XxqQfEZzfvDbxTSHR08o=
