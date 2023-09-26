@@ -92,8 +92,7 @@ func (hdl *testHandlerAsync) Handle(cmd Command) error {
 }
 
 type testHandlerScheduledAsync struct {
-	wg      *sync.WaitGroup
-	counter *uint32
+	wg *sync.WaitGroup
 }
 
 func (hdl *testHandlerScheduledAsync) Handle(cmd Command) error {
@@ -101,8 +100,6 @@ func (hdl *testHandlerScheduledAsync) Handle(cmd Command) error {
 	case *testCommand1, *testCommand2, testCommand3:
 		time.Sleep(time.Nanosecond * 200)
 		hdl.wg.Done()
-		atomic.AddUint32(hdl.counter, 1)
-		println(atomic.LoadUint32(hdl.counter))
 	}
 	return nil
 }

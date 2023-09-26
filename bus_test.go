@@ -88,7 +88,7 @@ func TestBus_HandleScheduled(t *testing.T) {
 	bus := NewBus()
 	bus.WorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerScheduledAsync{wg: wg, counter: new(uint32)}
+	hdl := &testHandlerScheduledAsync{wg: wg}
 
 	_, err := bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
 	if err == nil || err != BusNotInitializedError {

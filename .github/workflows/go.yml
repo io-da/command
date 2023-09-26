@@ -35,5 +35,6 @@ jobs:
         CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
       run: |
         ./cc-test-reporter before-build
+        GO111MODULE=off go get .
         GO111MODULE=off go test -race -coverprofile=c.out ./...
         ./cc-test-reporter after-build --exit-code $?
