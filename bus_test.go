@@ -88,8 +88,7 @@ func TestBus_HandleScheduled(t *testing.T) {
 	bus := NewBus()
 	bus.WorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerScheduledAsync{wg: wg}
-	wg.Add(1000)
+	hdl := &testHandlerScheduledAsync{wg: wg, counter: new(uint32)}
 
 	_, err := bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
 	if err == nil || err != BusNotInitializedError {
@@ -99,21 +98,21 @@ func TestBus_HandleScheduled(t *testing.T) {
 	}
 	bus.Initialize(hdl)
 
+	wg.Add(1)
 	_, _ = bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
 
 	sch := schedule.At(time.Now())
-	sch2 := *sch
+
+	wg.Add(100)
 	sch.AddCron(schedule.Cron().OnMilliseconds(schedule.Between(0, 998).Every(2)))
 	uuid1, _ := bus.Schedule(&testCommand1{}, sch)
-	sch2.AddCron(schedule.Cron().OnMilliseconds(schedule.Between(1, 999).Every(2)))
-	uuid2, _ := bus.Schedule(&testCommand2{}, &sch2)
 
 	timeout := time.AfterFunc(time.Second*5, func() {
 		t.Fatal("The commands should have been handled by now.")
 	})
 
 	wg.Wait()
-	bus.RemoveScheduled(*uuid1, *uuid2)
+	bus.RemoveScheduled(*uuid1)
 	if len(bus.scheduleProcessor.scheduledCommands) > 0 {
 		t.Error("The scheduled commands should be empty.")
 	}

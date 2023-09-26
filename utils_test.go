@@ -46,7 +46,6 @@ func (cmd *testHandlerOrderCommand) HandlerPosition(position uint32) {
 		atomic.StoreUint32(cmd.unordered, 1)
 	}
 	atomic.AddUint32(cmd.position, 1)
-
 }
 func (cmd *testHandlerOrderCommand) IsUnordered() bool {
 	return atomic.LoadUint32(cmd.unordered) == 1
@@ -93,7 +92,8 @@ func (hdl *testHandlerAsync) Handle(cmd Command) error {
 }
 
 type testHandlerScheduledAsync struct {
-	wg *sync.WaitGroup
+	wg      *sync.WaitGroup
+	counter *uint32
 }
 
 func (hdl *testHandlerScheduledAsync) Handle(cmd Command) error {
@@ -101,6 +101,8 @@ func (hdl *testHandlerScheduledAsync) Handle(cmd Command) error {
 	case *testCommand1, *testCommand2, testCommand3:
 		time.Sleep(time.Nanosecond * 200)
 		hdl.wg.Done()
+		atomic.AddUint32(hdl.counter, 1)
+		println(atomic.LoadUint32(hdl.counter))
 	}
 	return nil
 }
