@@ -1,7 +1,6 @@
 # [Go](https://golang.org/) Command Bus
 A command bus to demand all the things.  
 
-[![Build Status](https://travis-ci.org/io-da/command.svg?branch=master)](https://travis-ci.org/io-da/command)
 [![Maintainability](https://api.codeclimate.com/v1/badges/320d3b5a036178276900/maintainability)](https://codeclimate.com/github/io-da/command/maintainability)
 [![Test Coverage](https://api.codeclimate.com/v1/badges/320d3b5a036178276900/test_coverage)](https://codeclimate.com/github/io-da/command/test_coverage)
 [![GoDoc](https://godoc.org/github.com/io-da/command?status.svg)](https://godoc.org/github.com/io-da/command)
