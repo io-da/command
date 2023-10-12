@@ -265,14 +265,12 @@ func TestBus_Shutdown(t *testing.T) {
 func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 	bus := NewBus()
 
-	if err := bus.Initialize(&testHandler{}); err != nil {
+	if err := bus.Initialize(&testHandler{identifier: TestCommand1}); err != nil {
 		b.Fatal(err.Error())
 	}
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < 1000000; i++ {
-			if _, err := bus.Handle(&testCommand1{}); err != nil {
-				b.Fatal(err.Error())
-			}
+			_, _ = bus.Handle(&testCommand1{})
 		}
 	}
 }
@@ -281,15 +279,13 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	bus := NewBus()
 	wg := &sync.WaitGroup{}
 
-	if err := bus.Initialize(&testAsyncHandler{wg: wg}); err != nil {
+	if err := bus.Initialize(&testAsyncHandler{wg: wg, identifier: TestCommand1}); err != nil {
 		b.Fatal(err.Error())
 	}
 	for n := 0; n < b.N; n++ {
 		wg.Add(1000000)
 		for i := 0; i < 1000000; i++ {
-			if _, err := bus.HandleAsync(&testCommand1{}); err != nil {
-				b.Fatal(err.Error())
-			}
+			_, _ = bus.HandleAsync(&testCommand1{})
 		}
 		wg.Wait()
 	}

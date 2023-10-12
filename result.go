@@ -1,12 +1,7 @@
 package command
 
-import (
-	"sync"
-)
-
 // Result is the struct returned from regular queries.
 type Result struct {
-	sync.Mutex
 	data any
 }
 
