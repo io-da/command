@@ -2,8 +2,8 @@ package command
 
 import (
 	"errors"
+	"math/big"
 	"sync"
-	"time"
 )
 
 // ------Enums------//
@@ -52,7 +52,7 @@ func (hdl *testHandler) Handles() Identifier {
 }
 
 func (hdl *testHandler) Handle(cmd Command) (data any, err error) {
-	time.Sleep(time.Nanosecond * 200)
+	fibonacci(1000)
 	return
 }
 
@@ -77,7 +77,7 @@ func (hdl *testAsyncHandler) Handles() Identifier {
 }
 
 func (hdl *testAsyncHandler) Handle(cmd Command) (data any, err error) {
-	time.Sleep(time.Nanosecond * 200)
+	fibonacci(1000)
 	hdl.wg.Done()
 	return
 }
@@ -99,6 +99,19 @@ func (hdl *testAsyncAwaitHandler) Handle(cmd Command) (data any, err error) {
 		data = "ok"
 	}
 	return data, err
+}
+
+func fibonacci(n uint) *big.Int {
+	if n < 2 {
+		return big.NewInt(int64(n))
+	}
+	a, b := big.NewInt(0), big.NewInt(1)
+	for n--; n > 0; n-- {
+		a.Add(a, b)
+		a, b = b, a
+	}
+
+	return b
 }
 
 //------Error Handlers------//

@@ -118,7 +118,7 @@ func (bus *Bus) RemoveScheduled(keys ...uuid.UUID) {
 }
 
 // Shutdown the command bus gracefully.
-// *Async commands handled while shutting down will be disregarded*.
+// *Async commands accessed while shutting down will be disregarded*.
 func (bus *Bus) Shutdown() {
 	if atomic.CompareAndSwapUint32(bus.shuttingDown, 0, 1) {
 		go bus.shutdown()
@@ -163,12 +163,11 @@ func (bus *Bus) handleAsync(async *Async) {
 		async.fail(err)
 		return
 	}
-	async.setReturn(data)
-	async.done()
+	async.success(data)
 }
 
 func (bus *Bus) addToAsyncQueue(hdl Handler, cmd Command) *Async {
-	async := newResultAsync(hdl, cmd)
+	async := newAsync(hdl, cmd)
 	bus.asyncCommandsQueue <- async
 	return async
 }

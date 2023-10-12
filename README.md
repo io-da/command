@@ -101,13 +101,14 @@ Using ```bus.Schedule```, one may schedule a command to be processed at certain 
 
 ## Benchmarks
 All the benchmarks are performed against batches of 1 million commands.  
-All the benchmarks contain some overhead due to the usage of _sync.WaitGroup_.  
-The command handlers use ```time.Sleep(time.Nanosecond * 200)``` for simulation purposes.  
+All the benchmarks contain a small overhead due to the usage of _sync.WaitGroup_ for testing purposes.  
+The command handlers are calculating the fibonacci of 1000 for simulation purposes.  
+CPU: 11th Gen Intel(R) Core(TM) i9-11950H @ 2.60GHz
 
 | Benchmark Type | Time |
 | :--- | :---: |
-| Sync Commands | 531 ns/op |
-| Async Commands | 476 ns/op |
+| Sync Commands | 15828 ns/op |
+| Async Commands | 2808 ns/op |
 
 ## Examples
 An optional constants list of _Command_ identifiers (idiomatic ```enum```) for consistency

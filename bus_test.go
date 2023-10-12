@@ -98,7 +98,7 @@ func TestBus_HandleAsync(t *testing.T) {
 	}
 
 	timeout := time.AfterFunc(time.Second*10, func() {
-		t.Fatal("The commands should have been handled by now.")
+		t.Fatal("The commands should have been accessed by now.")
 	})
 
 	wg.Wait()
@@ -124,7 +124,7 @@ func TestBus_HandleAsyncAwait(t *testing.T) {
 	}
 
 	timeout := time.AfterFunc(time.Second*10, func() {
-		t.Fatal("The commands should have been handled by now.")
+		t.Fatal("The commands should have been accessed by now.")
 	})
 	if err = res.Await(); err != nil {
 		t.Fatal(err.Error())
@@ -166,7 +166,7 @@ func TestBus_HandleAsyncAwaitFail(t *testing.T) {
 	}
 
 	timeout := time.AfterFunc(time.Second*10, func() {
-		t.Fatal("The commands should have been handled by now.")
+		t.Fatal("The commands should have been accessed by now.")
 	})
 
 	_, err = res.Get()
@@ -211,7 +211,7 @@ func TestBus_HandleScheduled(t *testing.T) {
 	}
 
 	timeout := time.AfterFunc(time.Second*5, func() {
-		t.Fatal("The commands should have been handled by now.")
+		t.Fatal("The commands should have been accessed by now.")
 	})
 
 	wg.Wait()

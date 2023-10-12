@@ -7,16 +7,16 @@ type Async struct {
 	hdl     Handler
 	cmd     Command
 	data    any
-	handled *uint32
+	done    *uint32
 	pending chan bool
 	err     error
 }
 
-func newResultAsync(hdl Handler, cmd Command) *Async {
+func newAsync(hdl Handler, cmd Command) *Async {
 	return &Async{
 		hdl:     hdl,
 		cmd:     cmd,
-		handled: new(uint32),
+		done:    new(uint32),
 		pending: make(chan bool, 1),
 	}
 }
@@ -25,9 +25,8 @@ func newResultAsync(hdl Handler, cmd Command) *Async {
 
 // Await for the data from the return of the command
 func (res *Async) Await() error {
-	if !res.isHandled() {
+	if !res.isDone() {
 		<-res.pending
-		res.setHandled()
 	}
 	return res.err
 }
@@ -42,23 +41,25 @@ func (res *Async) Get() (any, error) {
 
 //------Internal------//
 
-func (res *Async) done() {
+func (res *Async) notifyDone() {
+	res.setDone()
 	res.pending <- true
 }
 
-func (res *Async) setHandled() {
-	atomic.CompareAndSwapUint32(res.handled, 0, 1)
+func (res *Async) setDone() {
+	atomic.CompareAndSwapUint32(res.done, 0, 1)
 }
 
-func (res *Async) isHandled() bool {
-	return atomic.LoadUint32(res.handled) == 1
+func (res *Async) isDone() bool {
+	return atomic.LoadUint32(res.done) == 1
 }
 
 func (res *Async) fail(err error) {
 	res.err = err
-	res.done()
+	res.notifyDone()
 }
 
-func (res *Async) setReturn(data any) {
+func (res *Async) success(data any) {
 	res.data = data
+	res.notifyDone()
 }
