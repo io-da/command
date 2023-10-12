@@ -64,7 +64,7 @@ func (pro *scheduleProcessor) process() {
 			}
 
 			if now.After(following) || now.Equal(following) {
-				_ = pro.bus.HandleAsync(schCmd.cmd)
+				_, _ = pro.bus.HandleAsync(schCmd.cmd)
 				if err := schCmd.sch.Next(); err != nil {
 					delete(pro.scheduledCommands, key)
 					continue
@@ -85,7 +85,10 @@ func (pro *scheduleProcessor) process() {
 }
 
 func (pro *scheduleProcessor) trigger() {
-	select { case pro.triggerSignal <- true:default:}
+	select {
+	case pro.triggerSignal <- true:
+	default:
+	}
 }
 
 func (pro *scheduleProcessor) updateSleepUntil(nextTrigger time.Time) {

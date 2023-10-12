@@ -9,10 +9,17 @@ import (
 
 func TestBus_Initialize(t *testing.T) {
 	bus := NewBus()
-	hdl := &testHandler{}
-	hdl2 := &testHandlerAsync{}
+	hdl := &testHandler{TestCommand1}
+	hdl2 := &testHandler{TestCommand2}
+	hdlRepeated := &testHandler{TestCommand1}
 
-	bus.Initialize(hdl, hdl2)
+	if err := bus.Initialize(hdl, hdl2, hdlRepeated); err == nil || err != OneHandlerPerCommandError {
+		t.Error("Expected OneHandlerPerCommandError error.")
+	}
+
+	if err := bus.Initialize(hdl, hdl2); err != nil {
+		t.Fatal(err.Error())
+	}
 	if len(bus.handlers) != 2 {
 		t.Error("Unexpected number of handlers.")
 	}
@@ -20,8 +27,11 @@ func TestBus_Initialize(t *testing.T) {
 
 func TestBus_AsyncBuffer(t *testing.T) {
 	bus := NewBus()
-	bus.QueueBuffer(1000)
-	bus.Initialize()
+	bus.SetQueueBuffer(1000)
+	if err := bus.Initialize(); err != nil {
+		t.Fatal(err.Error())
+	}
+
 	if cap(bus.asyncCommandsQueue) != 1000 {
 		t.Error("Unexpected async command queue capacity.")
 	}
@@ -29,52 +39,63 @@ func TestBus_AsyncBuffer(t *testing.T) {
 
 func TestBus_Handle(t *testing.T) {
 	bus := NewBus()
-	hdl := &testHandler{}
+	hdl := &testHandler{TestCommand1}
+	hdl2 := &testHandler{TestCommand3}
 
 	hdlWErr := &testHandlerError{}
 	errHdl := &storeErrorsHandler{
-		errs: make(map[string]error),
+		errs: make(map[Identifier]error),
 	}
-	bus.ErrorHandlers(errHdl)
+	bus.SetErrorHandlers(errHdl)
 
-	err := bus.Handle(nil)
-	if err == nil || err != InvalidCommandError {
+	if _, err := bus.Handle(nil); err == nil || err != InvalidCommandError {
 		t.Error("Expected InvalidCommandError error.")
-	} else if err.Error() != "command: invalid command" {
-		t.Error("Unexpected InvalidCommandError message.")
 	}
 
 	cmd := &testCommand1{}
-	err = bus.Handle(cmd)
-	if err == nil || err != BusNotInitializedError {
+	if _, err := bus.Handle(cmd); err == nil || err != BusNotInitializedError {
 		t.Error("Expected BusNotInitializedError error.")
-	} else if err.Error() != "command: the bus is not initialized" {
-		t.Error("Unexpected BusNotInitializedError message.")
 	}
 
-	bus.Initialize(hdl, hdlWErr)
-	_ = bus.Handle(&testCommand1{})
-	_ = bus.Handle(&testCommand2{})
-	_ = bus.Handle(testCommand3("test"))
+	if err := bus.Initialize(hdl, hdl2, hdlWErr); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.Handle(&testCommand1{}); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.Handle(&testCommand2{}); err == nil || err != HandlerNotFoundError {
+		t.Error("Expected HandlerNotFoundError error.")
+	}
+	if _, err := bus.Handle(testCommand3("test")); err != nil {
+		t.Fatal(err.Error())
+	}
 
 	errCmd := &testCommandError{}
-	_ = bus.Handle(errCmd)
-	if err := errHdl.Error(errCmd); err == nil {
+	if _, err := bus.Handle(errCmd); err == nil {
 		t.Error("Command handler was expected to throw an error.")
 	}
 }
 
 func TestBus_HandleAsync(t *testing.T) {
 	bus := NewBus()
-	bus.WorkerPoolSize(4)
+	bus.SetWorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerAsync{wg: wg}
+	hdl := &testHandlerAsync{wg: wg, identifier: TestCommand1}
+	hdl2 := &testHandlerAsync{wg: wg, identifier: TestCommand3}
 
-	wg.Add(3)
-	bus.Initialize(hdl)
-	_ = bus.HandleAsync(&testCommand1{})
-	_ = bus.HandleAsync(&testCommand2{})
-	_ = bus.HandleAsync(testCommand3("test"))
+	if err := bus.Initialize(hdl, hdl2); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.HandleAsync(&testCommand2{}); err == nil || err != HandlerNotFoundError {
+		t.Error("Expected HandlerNotFoundError error.")
+	}
+	wg.Add(2)
+	if _, err := bus.HandleAsync(&testCommand1{}); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.HandleAsync(testCommand3("test")); err != nil {
+		t.Fatal(err.Error())
+	}
 
 	timeout := time.AfterFunc(time.Second*10, func() {
 		t.Fatal("The commands should have been handled by now.")
@@ -84,11 +105,86 @@ func TestBus_HandleAsync(t *testing.T) {
 	timeout.Stop()
 }
 
+func TestBus_HandleAsyncAwait(t *testing.T) {
+	bus := NewBus()
+	bus.SetWorkerPoolSize(4)
+	hdl := &testHandlerAsyncAwait{identifier: TestCommand1}
+	hdl2 := &testHandlerAsyncAwait{identifier: TestCommand2}
+
+	if err := bus.Initialize(hdl, hdl2); err != nil {
+		t.Fatal(err.Error())
+	}
+	res, err := bus.HandleAsync(&testCommand1{})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	res2, err := bus.HandleAsync(&testCommand2{})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	timeout := time.AfterFunc(time.Second*10, func() {
+		t.Fatal("The commands should have been handled by now.")
+	})
+	if err = res.Await(); err != nil {
+		t.Fatal(err.Error())
+	}
+	data, err := res.Get()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if data != nil {
+		t.Error("The command handler returned unexpected data.")
+	}
+
+	if err = res2.Await(); err != nil {
+		t.Fatal(err.Error())
+	}
+	data, err = res2.Get()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	if data != "ok" {
+		t.Error("The command handler returned unexpected data.")
+	}
+
+	timeout.Stop()
+}
+
+func TestBus_HandleAsyncAwaitFail(t *testing.T) {
+	bus := NewBus()
+	bus.SetWorkerPoolSize(4)
+	hdl := &testHandlerError{}
+
+	if err := bus.Initialize(hdl); err != nil {
+		t.Fatal(err.Error())
+	}
+	cmd := &testCommandError{}
+	res, err := bus.HandleAsync(cmd)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	timeout := time.AfterFunc(time.Second*10, func() {
+		t.Fatal("The commands should have been handled by now.")
+	})
+
+	_, err = res.Get()
+	if err == nil {
+		t.Error("Command handler was expected to throw an error.")
+	}
+	if err.Error() != "command failed" {
+		t.Fatal(err.Error())
+	}
+
+	timeout.Stop()
+}
+
 func TestBus_HandleScheduled(t *testing.T) {
 	bus := NewBus()
-	bus.WorkerPoolSize(4)
+	bus.SetWorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerScheduledAsync{wg: wg}
+	hdl := &testHandlerScheduled{wg: wg}
 
 	_, err := bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
 	if err == nil || err != BusNotInitializedError {
@@ -96,16 +192,23 @@ func TestBus_HandleScheduled(t *testing.T) {
 	} else if err.Error() != "command: the bus is not initialized" {
 		t.Error("Unexpected BusNotInitializedError message.")
 	}
-	bus.Initialize(hdl)
+	if err := bus.Initialize(hdl); err != nil {
+		t.Fatal(err.Error())
+	}
 
 	wg.Add(1)
-	_, _ = bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
-
-	sch := schedule.At(time.Now())
+	if _, err = bus.Schedule(&testCommand1{}, schedule.At(time.Now())); err != nil {
+		t.Fatal(err.Error())
+	}
 
 	wg.Add(100)
+	sch := schedule.At(time.Now())
 	sch.AddCron(schedule.Cron().OnMilliseconds(schedule.Between(0, 998).Every(2)))
 	uuid1, _ := bus.Schedule(&testCommand1{}, sch)
+
+	for i := 0; i < 100; i++ {
+		bus.scheduleProcessor.trigger()
+	}
 
 	timeout := time.AfterFunc(time.Second*5, func() {
 		t.Fatal("The commands should have been handled by now.")
@@ -121,24 +224,30 @@ func TestBus_HandleScheduled(t *testing.T) {
 
 func TestBus_Shutdown(t *testing.T) {
 	bus := NewBus()
-	hdl := &testHandler{}
+	hdl := &testHandler{TestCommand1}
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
-	bus.WorkerPoolSize(1337)
-	bus.Initialize(hdl)
-	_ = bus.HandleAsync(&testCommand1{})
+	bus.SetWorkerPoolSize(1337)
+	if err := bus.Initialize(hdl); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.HandleAsync(&testCommand1{}); err != nil {
+		t.Fatal(err.Error())
+	}
 	bus.Shutdown()
 	for i := 0; i < 1000; i++ {
-		_ = bus.HandleAsync(&testCommand1{})
+		if _, err := bus.HandleAsync(&testCommand1{}); err == nil || err != BusIsShuttingDownError {
+			t.Fatal(err.Error())
+		}
 	}
 	go func() {
 		// graceful shutdown
 		if !bus.isShuttingDown() {
 			t.Error("The bus should be shutting down.")
 		}
-		err := bus.Handle(&testCommand1{})
+		_, err := bus.Handle(&testCommand1{})
 		if err == nil || err != BusIsShuttingDownError {
 			t.Error("Expected BusIsShuttingDownError error.")
 		} else if err.Error() != "command: the bus is shutting down" {
@@ -153,38 +262,17 @@ func TestBus_Shutdown(t *testing.T) {
 	wg.Wait()
 }
 
-func TestBus_HandlerOrder(t *testing.T) {
-	bus := NewBus()
-	wg := &sync.WaitGroup{}
-
-	hdls := make([]Handler, 0, 1000)
-	wg.Add(1000)
-	for i := 0; i < 1000; i++ {
-		hdls = append(hdls, &testHandlerOrder{wg: wg, position: uint32(i)})
-	}
-	bus.Initialize(hdls...)
-
-	cmd := &testHandlerOrderCommand{position: new(uint32), unordered: new(uint32)}
-	_ = bus.HandleAsync(cmd)
-
-	timeout := time.AfterFunc(time.Second*10, func() {
-		t.Fatal("The commands should have been handled by now.")
-	})
-
-	wg.Wait()
-	timeout.Stop()
-	if cmd.IsUnordered() {
-		t.Error("The Handler order MUST be respected.")
-	}
-}
-
 func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 	bus := NewBus()
 
-	bus.Initialize(&testHandler{})
+	if err := bus.Initialize(&testHandler{}); err != nil {
+		b.Fatal(err.Error())
+	}
 	for n := 0; n < b.N; n++ {
 		for i := 0; i < 1000000; i++ {
-			_ = bus.Handle(&testCommand1{})
+			if _, err := bus.Handle(&testCommand1{}); err != nil {
+				b.Fatal(err.Error())
+			}
 		}
 	}
 }
@@ -193,11 +281,15 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	bus := NewBus()
 	wg := &sync.WaitGroup{}
 
-	bus.Initialize(&testHandlerAsync{wg: wg})
+	if err := bus.Initialize(&testHandlerAsync{wg: wg}); err != nil {
+		b.Fatal(err.Error())
+	}
 	for n := 0; n < b.N; n++ {
 		wg.Add(1000000)
 		for i := 0; i < 1000000; i++ {
-			_ = bus.HandleAsync(&testCommand1{})
+			if _, err := bus.HandleAsync(&testCommand1{}); err != nil {
+				b.Fatal(err.Error())
+			}
 		}
 		wg.Wait()
 	}
