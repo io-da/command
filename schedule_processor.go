@@ -64,7 +64,7 @@ func (pro *scheduleProcessor) process() {
 			}
 
 			if now.After(following) || now.Equal(following) {
-				_, _ = pro.bus.HandleAsync(schCmd.cmd)
+				pro.bus.addToAsyncQueue(schCmd.hdl, schCmd.cmd)
 				if err := schCmd.sch.Next(); err != nil {
 					delete(pro.scheduledCommands, key)
 					continue

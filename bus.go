@@ -17,7 +17,7 @@ type Bus struct {
 	workers            *uint32
 	handlers           map[Identifier]Handler
 	errorHandlers      []ErrorHandler
-	asyncCommandsQueue chan *process[*ResultAsync]
+	asyncCommandsQueue chan *Async
 	closed             chan bool
 	scheduleProcessor  *scheduleProcessor
 }
@@ -75,7 +75,7 @@ func (bus *Bus) Initialize(hdls ...Handler) error {
 			}
 			bus.handlers[hdl.Handles()] = hdl
 		}
-		bus.asyncCommandsQueue = make(chan *process[*ResultAsync], bus.queueBuffer)
+		bus.asyncCommandsQueue = make(chan *Async, bus.queueBuffer)
 		for i := 0; i < bus.workerPoolSize; i++ {
 			bus.workerUp()
 			go bus.worker(bus.asyncCommandsQueue, bus.closed)
@@ -85,33 +85,30 @@ func (bus *Bus) Initialize(hdls ...Handler) error {
 }
 
 // HandleAsync the command using the workers asynchronously.
-func (bus *Bus) HandleAsync(cmd Command) (*ResultAsync, error) {
-	if err := bus.isValid(cmd); err != nil {
+func (bus *Bus) HandleAsync(cmd Command) (*Async, error) {
+	hdl, err := bus.handler(cmd)
+	if err != nil {
 		return nil, err
 	}
-	prs := newProcess(cmd, newResultAsync())
-	bus.asyncCommandsQueue <- prs
-	return prs.res, nil
+	return bus.addToAsyncQueue(hdl, cmd), nil
 }
 
 // Handle the command synchronously.
-func (bus *Bus) Handle(cmd Command) (*Result, error) {
-	if err := bus.isValid(cmd); err != nil {
+func (bus *Bus) Handle(cmd Command) (any, error) {
+	hdl, err := bus.handler(cmd)
+	if err != nil {
 		return nil, err
 	}
-	prs := newProcess(cmd, newResult())
-	if err := bus.handle(prs.cmd, prs.res); err != nil {
-		return nil, err
-	}
-	return prs.res, nil
+	return bus.handle(hdl, cmd)
 }
 
 // Schedule allows commands to be scheduled to be executed asynchronously.
 func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) (*uuid.UUID, error) {
-	if err := bus.isValid(cmd); err != nil {
+	hdl, err := bus.handler(cmd)
+	if err != nil {
 		return nil, err
 	}
-	key := bus.scheduleProcessor.add(newScheduledCommand(cmd, sch))
+	key := bus.scheduleProcessor.add(newScheduledCommand(hdl, cmd, sch))
 	return &key, nil
 }
 
@@ -142,36 +139,38 @@ func (bus *Bus) isShuttingDown() bool {
 	return atomic.LoadUint32(bus.shuttingDown) == 1
 }
 
-func (bus *Bus) worker(asyncCommandsQueue <-chan *process[*ResultAsync], closed chan<- bool) {
-	for prs := range asyncCommandsQueue {
-		if prs == nil {
+func (bus *Bus) worker(asyncCommandsQueue <-chan *Async, closed chan<- bool) {
+	for async := range asyncCommandsQueue {
+		if async == nil {
 			break
 		}
-		bus.handleAsync(prs.cmd, prs.res)
+		bus.handleAsync(async)
 	}
 	closed <- true
 }
 
-func (bus *Bus) handle(cmd Command, res *Result) error {
-	if hdl, ok := bus.handlers[cmd.Identifier()]; ok {
-		data, err := hdl.Handle(cmd)
-		if err != nil {
-			bus.error(cmd, err)
-			return err
-		}
-		if data != nil {
-			res.setReturn(data)
-		}
+func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
+	if data, err = hdl.Handle(cmd); err != nil {
+		data = nil
+		bus.error(cmd, err)
 	}
-	return nil
+	return
 }
 
-func (bus *Bus) handleAsync(cmd Command, res *ResultAsync) {
-	if err := bus.handle(cmd, res.Result); err != nil {
-		res.fail(err)
+func (bus *Bus) handleAsync(async *Async) {
+	data, err := bus.handle(async.hdl, async.cmd)
+	if err != nil {
+		async.fail(err)
 		return
 	}
-	res.done()
+	async.setReturn(data)
+	async.done()
+}
+
+func (bus *Bus) addToAsyncQueue(hdl Handler, cmd Command) *Async {
+	async := newResultAsync(hdl, cmd)
+	bus.asyncCommandsQueue <- async
+	return async
 }
 
 func (bus *Bus) workerUp() {
@@ -193,7 +192,7 @@ func (bus *Bus) shutdown() {
 	atomic.CompareAndSwapUint32(bus.shuttingDown, 1, 0)
 }
 
-func (bus *Bus) isValid(cmd Command) (err error) {
+func (bus *Bus) handler(cmd Command) (hdl Handler, err error) {
 	if cmd == nil {
 		err = InvalidCommandError
 		bus.error(cmd, err)
@@ -209,10 +208,10 @@ func (bus *Bus) isValid(cmd Command) (err error) {
 		bus.error(cmd, err)
 		return
 	}
-	if _, ok := bus.handlers[cmd.Identifier()]; !ok {
+	hdl, ok := bus.handlers[cmd.Identifier()]
+	if !ok {
 		err = HandlerNotFoundError
 		bus.error(cmd, err)
-		return
 	}
 	return
 }

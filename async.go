@@ -2,17 +2,20 @@ package command
 
 import "sync/atomic"
 
-// ResultAsync is the struct returned from async commands.
-type ResultAsync struct {
-	*Result
+// Async is the struct returned from async commands.
+type Async struct {
+	hdl     Handler
+	cmd     Command
+	data    any
 	handled *uint32
 	pending chan bool
 	err     error
 }
 
-func newResultAsync() *ResultAsync {
-	return &ResultAsync{
-		Result:  newResult(),
+func newResultAsync(hdl Handler, cmd Command) *Async {
+	return &Async{
+		hdl:     hdl,
+		cmd:     cmd,
 		handled: new(uint32),
 		pending: make(chan bool, 1),
 	}
@@ -21,7 +24,7 @@ func newResultAsync() *ResultAsync {
 //------Fetch Data------//
 
 // Await for the data from the return of the command
-func (res *ResultAsync) Await() error {
+func (res *Async) Await() error {
 	if !res.isHandled() {
 		<-res.pending
 		res.setHandled()
@@ -30,28 +33,32 @@ func (res *ResultAsync) Await() error {
 }
 
 // Get retrieves the data from the return of the first command.
-func (res *ResultAsync) Get() (any, error) {
+func (res *Async) Get() (any, error) {
 	if err := res.Await(); err != nil {
 		return nil, err
 	}
-	return res.Result.Get(), nil
+	return res.data, nil
 }
 
 //------Internal------//
 
-func (res *ResultAsync) done() {
+func (res *Async) done() {
 	res.pending <- true
 }
 
-func (res *ResultAsync) setHandled() {
+func (res *Async) setHandled() {
 	atomic.CompareAndSwapUint32(res.handled, 0, 1)
 }
 
-func (res *ResultAsync) isHandled() bool {
+func (res *Async) isHandled() bool {
 	return atomic.LoadUint32(res.handled) == 1
 }
 
-func (res *ResultAsync) fail(err error) {
+func (res *Async) fail(err error) {
 	res.err = err
 	res.done()
+}
+
+func (res *Async) setReturn(data any) {
+	res.data = data
 }

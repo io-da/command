@@ -269,9 +269,7 @@ func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 		b.Fatal(err.Error())
 	}
 	for n := 0; n < b.N; n++ {
-		for i := 0; i < 1000000; i++ {
-			_, _ = bus.Handle(&testCommand1{})
-		}
+		_, _ = bus.Handle(&testCommand1{})
 	}
 }
 
@@ -282,11 +280,9 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	if err := bus.Initialize(&testAsyncHandler{wg: wg, identifier: TestCommand1}); err != nil {
 		b.Fatal(err.Error())
 	}
+	wg.Add(b.N)
 	for n := 0; n < b.N; n++ {
-		wg.Add(1000000)
-		for i := 0; i < 1000000; i++ {
-			_, _ = bus.HandleAsync(&testCommand1{})
-		}
-		wg.Wait()
+		_, _ = bus.HandleAsync(&testCommand1{})
 	}
+	wg.Wait()
 }
