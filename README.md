@@ -23,31 +23,35 @@ A command bus to demand all the things.
 ## Introduction
 This library is intended for anyone looking to trigger application commands in a decoupled architecture.  
 The _Bus_ provides the option to use _workers_ ([goroutines](https://gobyexample.com/goroutines)) to attempt handling the commands in **non-blocking** manner.  
-Clean and simple codebase. **No reflection, no closures.**
+Clean and simple codebase.
 
 ## Getting Started
 
 ### Commands
 Commands are any type that implements the _Command_ interface. Ideally they should contain immutable data.  
 ```go
+type Identifier int64
+
 type Command interface {
-    ID() []byte
+    Identifier() Identifier
 }
 ```
 
 ### Handlers
-Handlers are any type that implements the _Handler_ interface. Handlers must be instantiated and provided to the bus on initialization.    
+Handlers are any type that implements the _Handler_ interface. Handlers must be instantiated and provided to the _Bus_ on initialization.  
+The _Bus_ is initialized using the function ```bus.Initialize```. The _Bus_ will then use the _Identifier_ of the handlers to know which _Command_ to process.
 ```go
 type Handler interface {
-    Handle(cmd Command) error
+    Handle(cmd Command) (any, error)
+    Handles() Identifier
 }
 ```
 
 ### Error Handlers
-Error handlers are any type that implements the _ErrorHandler_ interface. Error handlers are optional (but advised) and provided to the bus using the ```bus.ErrorHandlers``` function.  
+Error handlers are any type that implements the _ErrorHandler_ interface. Error handlers are optional (but advised) and provided to the _Bus_ using the ```bus.SetErrorHandlers``` function.  
 ```go
 type ErrorHandler interface {
-    Handle(evt Event, err error)
+    Handle(cmd Command, err error)
 }
 ```
 Any time an error occurs within the bus, it will be passed on to the error handlers. This strategy can be used for decoupled error handling.
@@ -56,12 +60,12 @@ Any time an error occurs within the bus, it will be passed on to the error handl
 _Bus_ is the _struct_ that will be used to trigger all the application's commands.  
 The _Bus_ should be instantiated and initialized on application startup. The initialization is separated from the instantiation for dependency injection purposes.  
 The application should instantiate the _Bus_ once and then use it's reference to trigger all the commands.  
-**The order in which the handlers are provided to the _Bus_ is always respected. Additionally a command may have multiple handlers.**
+**There can only be one _Handler_ per _Command_**.
 
 #### Tweaking Performance
 The number of workers for async commands can be adjusted.
 ```go
-bus.WorkerPoolSize(10)
+bus.SetWorkerPoolSize(10)
 ```
 If used, this function **must** be called **before** the _Bus_ is initialized. And it specifies the number of [goroutines](https://gobyexample.com/goroutines) used to handle async commands.  
 In some scenarios increasing the value can drastically improve performance.  
@@ -70,7 +74,7 @@ It defaults to the value returned by ```runtime.GOMAXPROCS(0)```.
 The buffer size of the async commands queue can also be adjusted.  
 Depending on the use case, this value may greatly impact performance.
 ```go
-bus.QueueBuffer(100)
+bus.SetQueueBuffer(100)
 ```
 If used, this function **must** be called **before** the _Bus_ is initialized.  
 It defaults to 100.  
@@ -85,26 +89,14 @@ bus.Shutdown()
 #### Available Errors
 Below is a list of errors that can occur when calling ```bus.HandleAsync or bus.Handle```.  
 ```go
-// command.ErrorInvalidCommand
-// command.ErrorCommandBusNotInitialized
-// command.ErrorCommandBusIsShuttingDown
-
-if err := bus.Handle(&Command{}); err != nil {
-    switch(err.(type)) {
-        case command.ErrorInvalidCommand:
-            // do something
-        case command.CommandBusNotInitializedError:
-            // do something
-        case command.CommandBusIsShuttingDownError:
-            // do something
-        default:
-            // do something
-    }
-}
+command.InvalidCommandError
+command.BusNotInitializedError
+command.BusIsShuttingDownError
+command.HandlerNotFoundError
 ```
 
 #### Scheduled Commands
-Since ```1.2```, the bus also has built in support for ```github.com/io-da/schedule```.  
+Since ```1.2```, the bus also has built in support for [github.com/io-da/schedule](https://github.com/io-da/schedule).  
 Using ```bus.Schedule```, one may schedule a command to be processed at certain times or even following a cron like pattern.
 
 ## Benchmarks
@@ -118,50 +110,58 @@ The command handlers use ```time.Sleep(time.Nanosecond * 200)``` for simulation 
 | Async Commands | 476 ns/op |
 
 ## Examples
-
+An optional constants list of _Command_ identifiers (idiomatic ```enum```) for consistency
+```go
+const (
+   Unidentified Identifier = iota
+   FooCommand
+   BarCommand
+)
+```
 #### Example Commands
 A simple ```struct``` command.
 ```go
-type Foo struct {
+
+type fooCommand struct {
     bar string
 }
-func (*Foo) ID() []byte {
-    return []byte("FOO-UUID")
+func (*fooCommand) Identifier() Identifier {
+    return FooCommand
 }
 ```
 
 A ```string``` command.
 ```go
-type Bar string
-func (Bar) ID() []byte {
-    return []byte("BAR-UUID")
+type barCommand string
+func (barCommand) Identifier() Identifier {
+    return BarCommand
 }
 ```
 
 #### Example Handlers
-A command handler that logs every command triggered.
+A couple of empty respective handlers.
 ```go
-type LoggerHandler struct {
+
+type fooHandler struct{}
+
+func (hdl *fooHandler) Handles() Identifier {
+    return FooCommand
 }
 
-func (hdl *LoggerHandler) Handle(cmd Command) error {
-    log.Printf("command %T emitted", cmd)
-    return nil
-}
-```
-
-A command handler that listens to multiple command types.
-```go
-type FooBarHandler struct {
+func (hdl *fooHandler) Handle(cmd Command) (data any, err error) {
+    // handle FooCommand
+    return
 }
 
-func (hdl *FooBarHandler) Handle(cmd Command) error {
-    // a convenient way to assert multiple command types.
-    switch cmd := cmd.(type) {
-    case *Foo, Bar:
-        // handler logic
-    }
-    return nil
+type barHandler struct{}
+
+func (hdl *barHandler) Handles() Identifier {
+    return BarCommand
+}
+
+func (hdl *barHandler) Handle(cmd Command) (data any, err error) {
+    // handle BarCommand
+    return
 }
 ```
 
@@ -176,22 +176,24 @@ func main() {
     // instantiate the bus (returns *command.Bus)
     bus := command.NewBus()
     
-    // initialize the bus with all of the application's command handlers
+    // initialize the bus with all the application's command handlers
     bus.Initialize(
-        // this handler will always be executed first
-        &LoggerHandler{},
-        // this one second
-        &FooBarHandler{},
+        &fooHandler{},
+        &barHandler{},
     )
     
     // trigger commands!
-    // now
-    bus.Handle(&Foo{})
-    // now async
-    bus.HandleAsync(&Foo{})
+    // sync
+    bus.Handle(&fooCommand{})
+    // async
+    bus.HandleAsync(barCommand{})
+    // async await
+    res, _ := bus.HandleAsync(&fooCommand{}) 
+    // do something
+    res.Await()
     // scheduled to run every day
     sch := schedule.As(schedule.Cron().EveryDay())
-    bus.Schedule(&Foo{}, sch)
+    bus.Schedule(&fooCommand{}, sch)
 }
 ```
 

@@ -40,9 +40,9 @@ func TestBus_AsyncBuffer(t *testing.T) {
 func TestBus_Handle(t *testing.T) {
 	bus := NewBus()
 	hdl := &testHandler{TestCommand1}
-	hdl2 := &testHandler{TestCommand3}
+	hdl2 := &testHandler{TestLiteralCommand}
 
-	hdlWErr := &testHandlerError{}
+	hdlWErr := &testErrorHandler{}
 	errHdl := &storeErrorsHandler{
 		errs: make(map[Identifier]error),
 	}
@@ -80,8 +80,8 @@ func TestBus_HandleAsync(t *testing.T) {
 	bus := NewBus()
 	bus.SetWorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerAsync{wg: wg, identifier: TestCommand1}
-	hdl2 := &testHandlerAsync{wg: wg, identifier: TestCommand3}
+	hdl := &testAsyncHandler{wg: wg, identifier: TestCommand1}
+	hdl2 := &testAsyncHandler{wg: wg, identifier: TestLiteralCommand}
 
 	if err := bus.Initialize(hdl, hdl2); err != nil {
 		t.Fatal(err.Error())
@@ -108,8 +108,8 @@ func TestBus_HandleAsync(t *testing.T) {
 func TestBus_HandleAsyncAwait(t *testing.T) {
 	bus := NewBus()
 	bus.SetWorkerPoolSize(4)
-	hdl := &testHandlerAsyncAwait{identifier: TestCommand1}
-	hdl2 := &testHandlerAsyncAwait{identifier: TestCommand2}
+	hdl := &testAsyncAwaitHandler{identifier: TestCommand1}
+	hdl2 := &testAsyncAwaitHandler{identifier: TestCommand2}
 
 	if err := bus.Initialize(hdl, hdl2); err != nil {
 		t.Fatal(err.Error())
@@ -154,7 +154,7 @@ func TestBus_HandleAsyncAwait(t *testing.T) {
 func TestBus_HandleAsyncAwaitFail(t *testing.T) {
 	bus := NewBus()
 	bus.SetWorkerPoolSize(4)
-	hdl := &testHandlerError{}
+	hdl := &testErrorHandler{}
 
 	if err := bus.Initialize(hdl); err != nil {
 		t.Fatal(err.Error())
@@ -184,7 +184,7 @@ func TestBus_HandleScheduled(t *testing.T) {
 	bus := NewBus()
 	bus.SetWorkerPoolSize(4)
 	wg := &sync.WaitGroup{}
-	hdl := &testHandlerScheduled{wg: wg}
+	hdl := &testAsyncHandler{wg: wg, identifier: TestCommand1}
 
 	_, err := bus.Schedule(&testCommand1{}, schedule.At(time.Now()))
 	if err == nil || err != BusNotInitializedError {
@@ -281,7 +281,7 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	bus := NewBus()
 	wg := &sync.WaitGroup{}
 
-	if err := bus.Initialize(&testHandlerAsync{wg: wg}); err != nil {
+	if err := bus.Initialize(&testAsyncHandler{wg: wg}); err != nil {
 		b.Fatal(err.Error())
 	}
 	for n := 0; n < b.N; n++ {

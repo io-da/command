@@ -3,7 +3,6 @@ package command
 import (
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -12,22 +11,19 @@ const (
 	Unidentified Identifier = iota
 	TestCommand1
 	TestCommand2
-	TestCommand3
-	TestCommandError
-	TestHandlerOrderCommand
+	TestLiteralCommand
+	TestErrorCommand
 )
 
 //------Commands------//
 
-type testCommand1 struct {
-}
+type testCommand1 struct{}
 
 func (*testCommand1) Identifier() Identifier {
 	return TestCommand1
 }
 
-type testCommand2 struct {
-}
+type testCommand2 struct{}
 
 func (*testCommand2) Identifier() Identifier {
 	return TestCommand2
@@ -36,32 +32,13 @@ func (*testCommand2) Identifier() Identifier {
 type testCommand3 string
 
 func (testCommand3) Identifier() Identifier {
-	return TestCommand3
+	return TestLiteralCommand
 }
 
-type testCommandError struct {
-}
+type testCommandError struct{}
 
 func (*testCommandError) Identifier() Identifier {
-	return TestCommandError
-}
-
-type testHandlerOrderCommand struct {
-	position  *uint32
-	unordered *uint32
-}
-
-func (cmd *testHandlerOrderCommand) HandlerPosition(position uint32) {
-	if position != atomic.LoadUint32(cmd.position) {
-		atomic.StoreUint32(cmd.unordered, 1)
-	}
-	atomic.AddUint32(cmd.position, 1)
-}
-func (cmd *testHandlerOrderCommand) IsUnordered() bool {
-	return atomic.LoadUint32(cmd.unordered) == 1
-}
-func (*testHandlerOrderCommand) Identifier() Identifier {
-	return TestHandlerOrderCommand
+	return TestErrorCommand
 }
 
 //------Handlers------//
@@ -79,42 +56,41 @@ func (hdl *testHandler) Handle(cmd Command) (data any, err error) {
 	return
 }
 
-type testHandlerError struct {
+type testErrorHandler struct{}
+
+func (hdl *testErrorHandler) Handles() Identifier {
+	return TestErrorCommand
 }
 
-func (hdl *testHandlerError) Handles() Identifier {
-	return TestCommandError
-}
-
-func (hdl *testHandlerError) Handle(cmd Command) (data any, err error) {
+func (hdl *testErrorHandler) Handle(cmd Command) (data any, err error) {
 	err = errors.New("command failed")
 	return
 }
 
-type testHandlerAsync struct {
+type testAsyncHandler struct {
 	wg         *sync.WaitGroup
 	identifier Identifier
 }
 
-func (hdl *testHandlerAsync) Handles() Identifier {
+func (hdl *testAsyncHandler) Handles() Identifier {
 	return hdl.identifier
 }
 
-func (hdl *testHandlerAsync) Handle(cmd Command) (data any, err error) {
+func (hdl *testAsyncHandler) Handle(cmd Command) (data any, err error) {
 	time.Sleep(time.Nanosecond * 200)
 	hdl.wg.Done()
 	return
 }
 
-type testHandlerAsyncAwait struct {
+type testAsyncAwaitHandler struct {
 	identifier Identifier
 }
 
-func (hdl *testHandlerAsyncAwait) Handles() Identifier {
+func (hdl *testAsyncAwaitHandler) Handles() Identifier {
 	return hdl.identifier
 }
 
-func (hdl *testHandlerAsyncAwait) Handle(cmd Command) (data any, err error) {
+func (hdl *testAsyncAwaitHandler) Handle(cmd Command) (data any, err error) {
 	data = "not ok"
 	switch any(cmd).(type) {
 	case *testCommand1:
@@ -123,38 +99,6 @@ func (hdl *testHandlerAsyncAwait) Handle(cmd Command) (data any, err error) {
 		data = "ok"
 	}
 	return data, err
-}
-
-type testHandlerScheduled struct {
-	wg *sync.WaitGroup
-}
-
-func (hdl *testHandlerScheduled) Handles() Identifier {
-	return TestCommand1
-}
-
-func (hdl *testHandlerScheduled) Handle(cmd Command) (data any, err error) {
-	time.Sleep(time.Nanosecond * 200)
-	hdl.wg.Done()
-	return
-}
-
-type testHandlerOrder struct {
-	wg         *sync.WaitGroup
-	position   uint32
-	identifier Identifier
-}
-
-func (hdl *testHandlerOrder) Handles() Identifier {
-	return hdl.identifier
-}
-
-func (hdl *testHandlerOrder) Handle(cmd Command) (data any, err error) {
-	if cmd, listens := cmd.(*testHandlerOrderCommand); listens {
-		cmd.HandlerPosition(hdl.position)
-		hdl.wg.Done()
-	}
-	return
 }
 
 //------Error Handlers------//
