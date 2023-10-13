@@ -2,6 +2,7 @@ package command
 
 import (
 	"github.com/io-da/schedule"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -227,17 +228,18 @@ func TestBus_HandleMiddleware(t *testing.T) {
 	hdl := &testHandler{TestCommand1}
 	hdl2 := &testHandler{TestCommand2}
 
-	hdlWErr := &testErrorHandler{}
 	errHdl := &storeErrorsHandler{
 		errs: make(map[Identifier]error),
 	}
 	bus.SetErrorHandlers(errHdl)
 
-	mdl1 := &testLoggerMiddleware{}
-	bus.SetInwardMiddlewares(mdl1)
-	bus.SetOutwardMiddlewares(mdl1)
+	logs := make(chan string, 8)
+	mdl1 := newTestLoggerMiddleware(logs, "logger1")
+	mdl2 := newTestLoggerMiddleware(logs, "logger2")
+	bus.SetInwardMiddlewares(mdl1, mdl2)
+	bus.SetOutwardMiddlewares(mdl1, mdl2)
 
-	if err := bus.Initialize(hdl, hdl2, hdlWErr); err != nil {
+	if err := bus.Initialize(hdl, hdl2); err != nil {
 		t.Fatal(err.Error())
 	}
 	if _, err := bus.Handle(&testCommand1{}); err != nil {
@@ -246,10 +248,115 @@ func TestBus_HandleMiddleware(t *testing.T) {
 	if _, err := bus.Handle(&testCommand2{}); err != nil {
 		t.Fatal(err.Error())
 	}
+	evaluateMessages(t, []string{
+		"logger1|inward|1",
+		"logger2|inward|1",
+		"logger1|outward|1",
+		"logger2|outward|1",
+		"logger1|inward|2",
+		"logger2|inward|2",
+		"logger1|outward|2",
+		"logger2|outward|2",
+	}, logs)
+}
 
-	errCmd := &testCommandError{}
-	if _, err := bus.Handle(errCmd); err == nil {
-		t.Error("Command handler was expected to throw an error.")
+func TestBus_HandleMiddlewareInwardError(t *testing.T) {
+	bus := NewBus()
+	hdl := &testHandler{TestCommand1}
+	hdl2 := &testHandler{TestCommand2}
+
+	errHdl := &storeErrorsHandler{
+		errs: make(map[Identifier]error),
+	}
+	bus.SetErrorHandlers(errHdl)
+
+	logs := make(chan string, 2)
+	mdl1 := newTestLoggerMiddleware(logs, "logger1")
+	mdl2 := newTestLoggerMiddleware(logs, "logger2")
+	mdl3 := &testErrorMiddleware{inwardFailure: true}
+	bus.SetInwardMiddlewares(mdl1, mdl3, mdl2)
+	bus.SetOutwardMiddlewares(mdl1, mdl3, mdl2)
+
+	if err := bus.Initialize(hdl, hdl2); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.Handle(&testCommand1{}); err == nil {
+		t.Error("Expected middleware error.")
+	}
+	if _, err := bus.Handle(&testCommand2{}); err == nil {
+		t.Error("Expected middleware error.")
+	}
+
+	evaluateMessages(t, []string{
+		"logger1|inward|1",
+		"logger1|inward|2",
+	}, logs)
+}
+
+func TestBus_HandleMiddlewareOutwardError(t *testing.T) {
+	bus := NewBus()
+	hdl := &testHandler{TestCommand1}
+	hdl2 := &testHandler{TestCommand2}
+
+	errHdl := &storeErrorsHandler{
+		errs: make(map[Identifier]error),
+	}
+	bus.SetErrorHandlers(errHdl)
+
+	logs := make(chan string, 6)
+	mdl1 := newTestLoggerMiddleware(logs, "logger1")
+	mdl2 := newTestLoggerMiddleware(logs, "logger2")
+	mdl3 := &testErrorMiddleware{outwardFailure: true}
+	bus.SetInwardMiddlewares(mdl1, mdl3, mdl2)
+	bus.SetOutwardMiddlewares(mdl1, mdl3, mdl2)
+
+	if err := bus.Initialize(hdl, hdl2); err != nil {
+		t.Fatal(err.Error())
+	}
+	res, _ := bus.HandleAsync(&testCommand1{})
+	res2, _ := bus.HandleAsync(&testCommand2{})
+	if err := res.Await(); err == nil {
+		t.Error("Expected middleware error.")
+	}
+	if err := res2.Await(); err == nil {
+		t.Error("Expected middleware error.")
+	}
+	evaluateMessagesUnordered(t, []string{
+		"logger1|inward|1",
+		"logger2|inward|1",
+		"logger1|outward|1",
+		"logger1|inward|2",
+		"logger2|inward|2",
+		"logger1|outward|2",
+	}, logs)
+}
+
+func evaluateMessages(t *testing.T, expectedList []string, messageChan <-chan string) {
+	step := 0
+	for message := range messageChan {
+		expected := expectedList[step]
+		if expected != message {
+			t.Errorf("Expected middleware message %s, got %s", expected, message)
+			break
+		}
+		step++
+		if step == len(expectedList) {
+			break
+		}
+	}
+}
+
+func evaluateMessagesUnordered(t *testing.T, expectedList []string, messageChan <-chan string) {
+	handled := 0
+	for message := range messageChan {
+		if !slices.Contains(expectedList, message) {
+			t.Errorf("Unexpected middleware message %s", message)
+			break
+		}
+		handled++
+		if handled == len(expectedList) {
+			break
+		}
 	}
 }
 
@@ -296,11 +403,21 @@ func TestBus_Shutdown(t *testing.T) {
 func BenchmarkBus_Handling1MillionCommands(b *testing.B) {
 	bus := NewBus()
 
-	if err := bus.Initialize(&testHandler{identifier: TestCommand1}); err != nil {
+	hdls := make([]Handler, 100)
+	cmds := make([]Command, 100)
+	for i := 0; i < 100; i++ {
+		hdls[i] = &testHandler{identifier: Identifier(i)}
+		cmds[i] = &testCommand{identifier: Identifier(i)}
+	}
+	if err := bus.Initialize(hdls...); err != nil {
 		b.Fatal(err.Error())
 	}
+	rotation := 0
 	for n := 0; n < b.N; n++ {
-		_, _ = bus.Handle(&testCommand1{})
+		_, _ = bus.Handle(cmds[rotation])
+		if rotation++; rotation >= 100 {
+			rotation = 0
+		}
 	}
 }
 
@@ -308,12 +425,22 @@ func BenchmarkBus_Handling1MillionAsyncCommands(b *testing.B) {
 	bus := NewBus()
 	wg := &sync.WaitGroup{}
 
-	if err := bus.Initialize(&testAsyncHandler{wg: wg, identifier: TestCommand1}); err != nil {
+	hdls := make([]Handler, 100)
+	cmds := make([]Command, 100)
+	for i := 0; i < 100; i++ {
+		hdls[i] = &testAsyncHandler{wg: wg, identifier: Identifier(i)}
+		cmds[i] = &testCommand{identifier: Identifier(i)}
+	}
+	if err := bus.Initialize(hdls...); err != nil {
 		b.Fatal(err.Error())
 	}
 	wg.Add(b.N)
+	rotation := 0
 	for n := 0; n < b.N; n++ {
-		_, _ = bus.HandleAsync(&testCommand1{})
+		_, _ = bus.HandleAsync(cmds[rotation])
+		if rotation++; rotation >= 100 {
+			rotation = 0
+		}
 	}
 	wg.Wait()
 }

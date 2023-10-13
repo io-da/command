@@ -16,22 +16,15 @@ const (
 	TestErrorCommand
 )
 
-func (i Identifier) String() string {
-	switch i {
-	case TestCommand1:
-		return "Test Command 1"
-	case TestCommand2:
-		return "Test Command 2"
-	case TestLiteralCommand:
-		return "Test Literal Command"
-	case TestErrorCommand:
-		return "Test Error Command"
-	default:
-		return "Unidentified Command"
-	}
+//------Commands------//
+
+type testCommand struct {
+	identifier Identifier
 }
 
-//------Commands------//
+func (cmd *testCommand) Identifier() Identifier {
+	return cmd.identifier
+}
 
 type testCommand1 struct{}
 
@@ -150,23 +143,46 @@ func (hdl *storeErrorsHandler) key(cmd Command) Identifier {
 
 type testLoggerMiddleware struct {
 	logHandler chan string
+	testId     string
+}
+
+func newTestLoggerMiddleware(logHandler chan string, testId string) *testLoggerMiddleware {
+	return &testLoggerMiddleware{
+		logHandler: logHandler,
+		testId:     testId,
+	}
 }
 
 func (hdl *testLoggerMiddleware) HandleInward(cmd Command) error {
-	if cmdStr, ok := cmd.(fmt.Stringer); ok {
-		hdl.logHandler <- fmt.Sprintf("handling command: identifier(%d) \"%s\"", cmd.Identifier(), cmdStr.String())
-		return nil
-	}
-	hdl.logHandler <- fmt.Sprintf("handling command: identifier(%d)", cmd.Identifier())
+	hdl.log(fmt.Sprintf("%s|inward|%d", hdl.testId, cmd.Identifier()))
 	return nil
 }
 
 func (hdl *testLoggerMiddleware) HandleOutward(cmd Command, data any, err error) error {
-	if cmdStr, ok := cmd.(fmt.Stringer); ok {
-		hdl.logHandler <- fmt.Sprintf("done command: identifier(%d) \"%s\"", cmd.Identifier(), cmdStr.String())
-		return nil
+	hdl.log(fmt.Sprintf("%s|outward|%d", hdl.testId, cmd.Identifier()))
+	return nil
+}
+
+func (hdl *testLoggerMiddleware) log(message string) {
+	hdl.logHandler <- message
+}
+
+type testErrorMiddleware struct {
+	inwardFailure  bool
+	outwardFailure bool
+}
+
+func (hdl *testErrorMiddleware) HandleInward(cmd Command) error {
+	if hdl.inwardFailure {
+		return errors.New("inward middleware failure")
 	}
-	hdl.logHandler <- fmt.Sprintf("done command: identifier(%d)", cmd.Identifier())
+	return nil
+}
+
+func (hdl *testErrorMiddleware) HandleOutward(cmd Command, data any, err error) error {
+	if hdl.outwardFailure {
+		return errors.New("outward middleware failure")
+	}
 	return nil
 }
 
