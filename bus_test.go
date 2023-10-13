@@ -222,6 +222,37 @@ func TestBus_HandleScheduled(t *testing.T) {
 	timeout.Stop()
 }
 
+func TestBus_HandleMiddleware(t *testing.T) {
+	bus := NewBus()
+	hdl := &testHandler{TestCommand1}
+	hdl2 := &testHandler{TestCommand2}
+
+	hdlWErr := &testErrorHandler{}
+	errHdl := &storeErrorsHandler{
+		errs: make(map[Identifier]error),
+	}
+	bus.SetErrorHandlers(errHdl)
+
+	mdl1 := &testLoggerMiddleware{}
+	bus.SetInwardMiddlewares(mdl1)
+	bus.SetOutwardMiddlewares(mdl1)
+
+	if err := bus.Initialize(hdl, hdl2, hdlWErr); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.Handle(&testCommand1{}); err != nil {
+		t.Fatal(err.Error())
+	}
+	if _, err := bus.Handle(&testCommand2{}); err != nil {
+		t.Fatal(err.Error())
+	}
+
+	errCmd := &testCommandError{}
+	if _, err := bus.Handle(errCmd); err == nil {
+		t.Error("Command handler was expected to throw an error.")
+	}
+}
+
 func TestBus_Shutdown(t *testing.T) {
 	bus := NewBus()
 	hdl := &testHandler{TestCommand1}

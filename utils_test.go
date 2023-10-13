@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"sync"
 )
@@ -14,6 +15,21 @@ const (
 	TestLiteralCommand
 	TestErrorCommand
 )
+
+func (i Identifier) String() string {
+	switch i {
+	case TestCommand1:
+		return "Test Command 1"
+	case TestCommand2:
+		return "Test Command 2"
+	case TestLiteralCommand:
+		return "Test Literal Command"
+	case TestErrorCommand:
+		return "Test Error Command"
+	default:
+		return "Unidentified Command"
+	}
+}
 
 //------Commands------//
 
@@ -128,6 +144,30 @@ func (hdl *storeErrorsHandler) key(cmd Command) Identifier {
 		return Unidentified
 	}
 	return cmd.Identifier()
+}
+
+// ------Middlewares------//
+
+type testLoggerMiddleware struct {
+	logHandler chan string
+}
+
+func (hdl *testLoggerMiddleware) HandleInward(cmd Command) error {
+	if cmdStr, ok := cmd.(fmt.Stringer); ok {
+		hdl.logHandler <- fmt.Sprintf("handling command: identifier(%d) \"%s\"", cmd.Identifier(), cmdStr.String())
+		return nil
+	}
+	hdl.logHandler <- fmt.Sprintf("handling command: identifier(%d)", cmd.Identifier())
+	return nil
+}
+
+func (hdl *testLoggerMiddleware) HandleOutward(cmd Command, data any, err error) error {
+	if cmdStr, ok := cmd.(fmt.Stringer); ok {
+		hdl.logHandler <- fmt.Sprintf("done command: identifier(%d) \"%s\"", cmd.Identifier(), cmdStr.String())
+		return nil
+	}
+	hdl.logHandler <- fmt.Sprintf("done command: identifier(%d)", cmd.Identifier())
+	return nil
 }
 
 //------General------//
