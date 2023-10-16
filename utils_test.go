@@ -158,9 +158,9 @@ func (hdl *testLoggerMiddleware) HandleInward(cmd Command) error {
 	return nil
 }
 
-func (hdl *testLoggerMiddleware) HandleOutward(cmd Command, data any, err error) error {
+func (hdl *testLoggerMiddleware) HandleOutward(cmd Command, data any, err error) (any, error) {
 	hdl.log(fmt.Sprintf("%s|outward|%d", hdl.testId, cmd.Identifier()))
-	return nil
+	return data, nil
 }
 
 func (hdl *testLoggerMiddleware) log(message string) {
@@ -179,11 +179,11 @@ func (hdl *testErrorMiddleware) HandleInward(cmd Command) error {
 	return nil
 }
 
-func (hdl *testErrorMiddleware) HandleOutward(cmd Command, data any, err error) error {
+func (hdl *testErrorMiddleware) HandleOutward(cmd Command, data any, err error) (any, error) {
 	if hdl.outwardFailure {
-		return errors.New("outward middleware failure")
+		return nil, errors.New("outward middleware failure")
 	}
-	return nil
+	return data, nil
 }
 
 //------General------//

@@ -56,6 +56,24 @@ type ErrorHandler interface {
 ```
 Any time an error occurs within the bus, it will be passed on to the error handlers. This strategy can be used for decoupled error handling.
 
+
+### Middlewares
+Middlewares are any type that implements the _InwardMiddleware_ or the _OutwardMiddleware_ interface.  
+Middlewares are optional and provided to the _Bus_ using the ```bus.SetInwardMiddlewares``` and ```bus.SetOutwardMiddlewares``` functions.  
+An _InwardMiddleware_ middleware handles every command before it is provided to its respective handler.  
+An _OutwardMiddleware_ middleware handles every command that was successfully processed by its respective handler. These middlewares are also provided with the data or error returned by the command handler. Allowing potential data/error handling, such as transformations.
+
+**The order in which the middlewares are provided to the Bus is always respected. Additionally, if a middleware returns an error, it interrupts the flow and the command is no longer passed along to the next step.**
+```go
+type InwardMiddleware interface {
+    HandleInward(cmd Command) error
+}
+
+type OutwardMiddleware interface {
+    HandleOutward(cmd Command, data any, err error) error
+}
+```
+
 ### The Bus
 _Bus_ is the _struct_ that will be used to trigger all the application's commands.  
 The _Bus_ should be instantiated and initialized on application startup. The initialization is separated from the instantiation for dependency injection purposes.  

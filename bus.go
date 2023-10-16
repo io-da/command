@@ -188,7 +188,10 @@ func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
 		bus.error(cmd, err)
 	}
 	for _, outMdl := range bus.outwardMiddlewares {
-		if err = outMdl.HandleOutward(cmd, data, err); err != nil {
+		var mdlErr error
+		if data, mdlErr = outMdl.HandleOutward(cmd, data, err); mdlErr != nil {
+			data = nil
+			err = mdlErr
 			bus.error(cmd, err)
 			return
 		}

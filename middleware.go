@@ -9,5 +9,5 @@ type InwardMiddleware interface {
 // OutwardMiddleware must be implemented for a type to qualify as an outward command middleware.
 // An outward middleware process the command after being provided to the respective command handler.
 type OutwardMiddleware interface {
-	HandleOutward(cmd Command, data any, err error) error
+	HandleOutward(cmd Command, data any, err error) (any, error)
 }
