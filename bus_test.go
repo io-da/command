@@ -2,7 +2,6 @@ package command
 
 import (
 	"github.com/io-da/schedule"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -349,7 +348,7 @@ func evaluateMessages(t *testing.T, expectedList []string, messageChan <-chan st
 func evaluateMessagesUnordered(t *testing.T, expectedList []string, messageChan <-chan string) {
 	handled := 0
 	for message := range messageChan {
-		if !slices.Contains(expectedList, message) {
+		if !listContains(expectedList, message) {
 			t.Errorf("Unexpected middleware message %s", message)
 			break
 		}
@@ -358,6 +357,15 @@ func evaluateMessagesUnordered(t *testing.T, expectedList []string, messageChan 
 			break
 		}
 	}
+}
+
+func listContains(expectedList []string, message string) bool {
+	for _, i := range expectedList {
+		if i == message {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBus_Shutdown(t *testing.T) {
