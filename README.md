@@ -12,6 +12,7 @@ A command bus to demand all the things.
 1. [Commands](#Commands)
 2. [Handlers](#Handlers)
 3. [Error Handlers](#Error-Handlers)
+3. [Middlewares](#Middlewares)
 4. [The Bus](#The-Bus)  
    1. [Tweaking Performance](#Tweaking-Performance)  
    2. [Shutting Down](#Shutting-Down)  
