@@ -9,9 +9,14 @@ func (e BusError) Error() string {
 }
 
 const (
-	InvalidCommandError       = BusError("command: invalid command")
-	BusNotInitializedError    = BusError("command: the bus is not initialized")
-	BusIsShuttingDownError    = BusError("command: the bus is shutting down")
+	// InvalidCommandError will be returned when attempting to handle an invalid command.
+	InvalidCommandError = BusError("command: invalid command")
+	// BusNotInitializedError will be returned when attempting to handle a command before the bus is initialized.
+	BusNotInitializedError = BusError("command: the bus is not initialized")
+	// BusIsShuttingDownError will be returned when attempting to handle a command while the bus is shutting down.
+	BusIsShuttingDownError = BusError("command: the bus is shutting down")
+	// OneHandlerPerCommandError will be returned when attempting to initialize the bus with more than one handler listening to the same command.
 	OneHandlerPerCommandError = BusError("command: there can only be one handler per command")
-	HandlerNotFoundError      = BusError("command: no handler found for the command provided")
+	// HandlerNotFoundError will be returned when no handler is found to the provided command.
+	HandlerNotFoundError = BusError("command: no handler found for the command provided")
 )
