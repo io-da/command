@@ -61,8 +61,8 @@ Any time an error occurs within the bus, it will be passed on to the error handl
 ### Middlewares
 Middlewares are any type that implements the _InwardMiddleware_ or the _OutwardMiddleware_ interface.  
 Middlewares are optional and provided to the _Bus_ using the ```bus.SetInwardMiddlewares``` and ```bus.SetOutwardMiddlewares``` functions.  
-An _InwardMiddleware_ middleware handles every command before it is provided to its respective handler.  
-An _OutwardMiddleware_ middleware handles every command that was successfully processed by its respective handler. These middlewares are also provided with the data or error returned by the command handler. Allowing potential data/error handling, such as transformations.
+An _InwardMiddleware_ handles every command before it is provided to its respective handler.  
+An _OutwardMiddleware_ handles every command that was successfully processed by its respective handler. These middlewares are also provided with the data or error returned by the command handler. Allowing potential data/error handling, such as transformations.
 
 **The order in which the middlewares are provided to the Bus is always respected. Additionally, if a middleware returns an error, it interrupts the flow and the command is no longer passed along to the next step.**
 ```go
@@ -106,11 +106,12 @@ bus.Shutdown()
 **This function will block until the bus is fully stopped.**
 
 #### Available Errors
-Below is a list of errors that can occur when calling ```bus.HandleAsync or bus.Handle```.  
+Below is a list of errors that can occur when calling ```bus.Initialize```, ```bus.Handle```, ```bus.HandleAsync``` and ```bus.Schedule```.  
 ```go
 command.InvalidCommandError
 command.BusNotInitializedError
 command.BusIsShuttingDownError
+command.OneHandlerPerCommandError
 command.HandlerNotFoundError
 ```
 
