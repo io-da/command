@@ -115,7 +115,7 @@ func (bus *Bus) Handle(cmd Command) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return bus.handle(hdl, cmd)
+	return bus.handle(hdl, cmd, nil)
 }
 
 // HandleAsync processes the command asynchronously using workers through their respective handler.
@@ -174,14 +174,19 @@ func (bus *Bus) worker(asyncCommandsQueue <-chan *Async, closed chan<- bool) {
 	closed <- true
 }
 
-func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
+func (bus *Bus) handle(hdl Handler, cmd Command, cls ClosureCommand) (data any, err error) {
 	for _, inMdl := range bus.inwardMiddlewares {
 		if err = inMdl.HandleInward(cmd); err != nil {
 			bus.error(cmd, err)
 			return
 		}
 	}
-	if data, err = hdl.Handle(cmd); err != nil {
+	if cls != nil {
+		data, err = cls()
+	} else {
+		data, err = hdl.Handle(cmd)
+	}
+	if err != nil {
 		data = nil
 		bus.error(cmd, err)
 	}
@@ -198,13 +203,7 @@ func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
 }
 
 func (bus *Bus) handleAsync(async *Async) {
-	var data any
-	var err error
-	if async.isCls {
-		data, err = async.cls()
-	} else {
-		data, err = bus.handle(async.hdl, async.cmd)
-	}
+	data, err := bus.handle(async.hdl, async.cmd, async.cls)
 	if err != nil {
 		async.fail(err)
 		return
