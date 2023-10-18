@@ -12,14 +12,15 @@ A command bus to demand all the things.
 1. [Commands](#Commands)
 2. [Handlers](#Handlers)
 3. [Error Handlers](#Error-Handlers)
-3. [Middlewares](#Middlewares)
-4. [The Bus](#The-Bus)  
-   1. [Tweaking Performance](#Tweaking-Performance)  
-   2. [Shutting Down](#Shutting-Down)  
-   3. [Available Errors](#Available-Errors)
-   3. [Scheduled Commands](#Scheduled-Commands)
-5. [Benchmarks](#Benchmarks)
-6. [Examples](#Examples)
+4. [Middlewares](#Middlewares)
+5. [The Bus](#The-Bus)  
+   1. [Handling Commands](#Handling-Commands)  
+   2. [Tweaking Performance](#Tweaking-Performance)  
+   3. [Shutting Down](#Shutting-Down)  
+   4. [Available Errors](#Available-Errors)
+   5. [Scheduled Commands](#Scheduled-Commands)
+6. [Benchmarks](#Benchmarks)
+7. [Examples](#Examples)
 
 ## Introduction
 This library is intended for anyone looking to trigger application commands in a decoupled architecture.  
@@ -30,6 +31,7 @@ Clean and simple codebase.
 
 ### Commands
 Commands are any type that implements the _Command_ interface. Ideally they should contain immutable data.  
+It is also possible to provide a closure to the bus.
 ```go
 type Identifier int64
 
@@ -80,6 +82,39 @@ _Bus_ is the _struct_ that will be used to trigger all the application's command
 The _Bus_ should be instantiated and initialized on application startup. The initialization is separated from the instantiation for dependency injection purposes.  
 The application should instantiate the _Bus_ once and then use it's reference to trigger all the commands.  
 **There can only be one _Handler_ per _Command_**.
+
+#### Handling Commands
+The _Bus_ provides multiple ways to handle commands.  
+> **Synchronous**. The bus processes the command immediately and returns the result from the handler.
+>```go
+>data, err := bus.Handle(&FooBar{})
+>```
+
+> **Asynchronous**. The bus processes the command using workers. It is no-blocking.  
+> It is possible however to _Await_ for the command to finish being processed.
+>```go
+>as, _ := bus.HandleAsync(&FooBar{})
+>// do something
+>data, err := as.Await()
+>```
+
+> **Closures**. The bus also accepts a closure to be provided.  
+> It will be handled in an asynchronous manner using workers. These also support _Await_.
+>```go
+>as, _ := bus.HandleClosure(func() (data any, err error) {
+>   return "foo bar", nil
+>})
+>// do something
+>data, err := as.Await()
+>```
+
+> **Schedule**. The bus will use a schedule processor to handle the provided command according to a _*Schedule_  struct.  
+> More information about _*Schedule_ can be found [here](https://github.com/io-da/schedule).
+>```go
+>uuid, err := bus.Schedule(&FooBar{}, schedule.At(time.Now())))
+>// if the scheduled command needs to be removed during runtime.
+>bus.RemoveScheduled(uuid)
+>```
 
 #### Tweaking Performance
 The number of workers for async commands can be adjusted.
