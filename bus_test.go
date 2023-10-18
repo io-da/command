@@ -126,10 +126,10 @@ func TestBus_HandleAsyncAwait(t *testing.T) {
 	timeout := time.AfterFunc(time.Second*10, func() {
 		t.Fatal("The commands should have been accessed by now.")
 	})
-	if err = res.Await(); err != nil {
+	if _, err = res.Await(); err != nil {
 		t.Fatal(err.Error())
 	}
-	data, err := res.Get()
+	data, err := res.Await()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -137,10 +137,10 @@ func TestBus_HandleAsyncAwait(t *testing.T) {
 		t.Error("The command handler returned unexpected data.")
 	}
 
-	if err = res2.Await(); err != nil {
+	if _, err = res2.Await(); err != nil {
 		t.Fatal(err.Error())
 	}
-	data, err = res2.Get()
+	data, err = res2.Await()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -169,7 +169,7 @@ func TestBus_HandleAsyncAwaitFail(t *testing.T) {
 		t.Fatal("The commands should have been accessed by now.")
 	})
 
-	_, err = res.Get()
+	_, err = res.Await()
 	if err == nil {
 		t.Error("Command handler was expected to throw an error.")
 	}
@@ -314,10 +314,10 @@ func TestBus_HandleMiddlewareOutwardError(t *testing.T) {
 	}
 	res, _ := bus.HandleAsync(&testCommand1{})
 	res2, _ := bus.HandleAsync(&testCommand2{})
-	if err := res.Await(); err == nil {
+	if _, err := res.Await(); err == nil {
 		t.Error("Expected middleware error.")
 	}
-	if err := res2.Await(); err == nil {
+	if _, err := res2.Await(); err == nil {
 		t.Error("Expected middleware error.")
 	}
 	evaluateMessagesUnordered(t, []string{
@@ -328,6 +328,25 @@ func TestBus_HandleMiddlewareOutwardError(t *testing.T) {
 		"logger2|inward|2",
 		"logger1|outward|2",
 	}, logs)
+}
+
+func TestBus_HandleClosure(t *testing.T) {
+	bus := NewBus()
+
+	if err := bus.Initialize(); err != nil {
+		t.Fatal(err.Error())
+	}
+	res := bus.HandleClosure(func() (data any, err error) {
+		return "foo bar", nil
+	})
+	data, err := res.Await()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	data, ok := data.(string)
+	if !ok || data != "foo bar" {
+		t.Error("Expected the closure to return \"foo bar\"")
+	}
 }
 
 func evaluateMessages(t *testing.T, expectedList []string, messageChan <-chan string) {
@@ -390,7 +409,7 @@ func TestBus_Shutdown(t *testing.T) {
 	}
 	go func() {
 		// graceful shutdown
-		if !bus.isShuttingDown() {
+		if !bus.shuttingDown.enabled() {
 			t.Error("The bus should be shutting down.")
 		}
 		_, err := bus.Handle(&testCommand1{})
@@ -402,7 +421,7 @@ func TestBus_Shutdown(t *testing.T) {
 		wg.Done()
 	}()
 
-	for bus.isShuttingDown() {
+	for bus.shuttingDown.enabled() {
 		time.Sleep(time.Microsecond)
 	}
 	wg.Wait()

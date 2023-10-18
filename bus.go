@@ -4,7 +4,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/io-da/schedule"
 	"runtime"
-	"sync/atomic"
 )
 
 // Bus is the only struct exported and required for the command bus usage.
@@ -12,9 +11,9 @@ import (
 type Bus struct {
 	workerPoolSize     int
 	queueBuffer        int
-	initialized        *uint32
-	shuttingDown       *uint32
-	workers            *uint32
+	initialized        *flag
+	shuttingDown       *flag
+	workers            *counter
 	handlers           map[Identifier]Handler
 	errorHandlers      []ErrorHandler
 	inwardMiddlewares  []InwardMiddleware
@@ -30,9 +29,9 @@ func NewBus() *Bus {
 	bus := &Bus{
 		workerPoolSize:     runtime.GOMAXPROCS(0),
 		queueBuffer:        100,
-		initialized:        new(uint32),
-		shuttingDown:       new(uint32),
-		workers:            new(uint32),
+		initialized:        newFlag(),
+		shuttingDown:       newFlag(),
+		workers:            newCounter(),
 		handlers:           make(map[Identifier]Handler),
 		errorHandlers:      make([]ErrorHandler, 0),
 		inwardMiddlewares:  make([]InwardMiddleware, 0),
@@ -47,7 +46,7 @@ func NewBus() *Bus {
 // It can only be adjusted *before* the bus is initialized.
 // It defaults to the value returned by runtime.GOMAXPROCS(0).
 func (bus *Bus) SetWorkerPoolSize(workerPoolSize int) {
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		bus.workerPoolSize = workerPoolSize
 	}
 }
@@ -57,7 +56,7 @@ func (bus *Bus) SetWorkerPoolSize(workerPoolSize int) {
 // It can only be adjusted *before* the bus is initialized.
 // It defaults to 100.
 func (bus *Bus) SetQueueBuffer(queueBuffer int) {
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		bus.queueBuffer = queueBuffer
 	}
 }
@@ -66,7 +65,7 @@ func (bus *Bus) SetQueueBuffer(queueBuffer int) {
 // They will receive any error thrown during the command process.
 // Error handlers may only be provided *before* the bus is initialized.
 func (bus *Bus) SetErrorHandlers(hdls ...ErrorHandler) {
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		bus.errorHandlers = hdls
 	}
 }
@@ -76,7 +75,7 @@ func (bus *Bus) SetErrorHandlers(hdls ...ErrorHandler) {
 // *The order the middlewares are provided is always respected*.
 // Middlewares may only be provided *before* the bus is initialized.
 func (bus *Bus) SetInwardMiddlewares(mdls ...InwardMiddleware) {
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		bus.inwardMiddlewares = mdls
 	}
 }
@@ -86,7 +85,7 @@ func (bus *Bus) SetInwardMiddlewares(mdls ...InwardMiddleware) {
 // *The order the middlewares are provided is always respected*.
 // Middlewares may only be provided *before* the bus is initialized.
 func (bus *Bus) SetOutwardMiddlewares(mdls ...OutwardMiddleware) {
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		bus.outwardMiddlewares = mdls
 	}
 }
@@ -94,7 +93,7 @@ func (bus *Bus) SetOutwardMiddlewares(mdls ...OutwardMiddleware) {
 // Initialize the command bus by providing the list of handlers.
 // There can only be one handler per command.
 func (bus *Bus) Initialize(hdls ...Handler) error {
-	if bus.initialize() {
+	if bus.initialized.enable() {
 		for _, hdl := range hdls {
 			if _, exists := bus.handlers[hdl.Handles()]; exists {
 				return OneHandlerPerCommandError
@@ -103,24 +102,14 @@ func (bus *Bus) Initialize(hdls ...Handler) error {
 		}
 		bus.asyncCommandsQueue = make(chan *Async, bus.queueBuffer)
 		for i := 0; i < bus.workerPoolSize; i++ {
-			bus.workerUp()
+			bus.workers.increment()
 			go bus.worker(bus.asyncCommandsQueue, bus.closed)
 		}
 	}
 	return nil
 }
 
-// HandleAsync the command using the workers asynchronously.
-// It also returns an *Async struct which allows clients to optionally await for the command to be processed.
-func (bus *Bus) HandleAsync(cmd Command) (*Async, error) {
-	hdl, err := bus.handler(cmd)
-	if err != nil {
-		return nil, err
-	}
-	return bus.addToAsyncQueue(hdl, cmd), nil
-}
-
-// Handle the command synchronously.
+// Handle processes the command synchronously through their respective handler.
 func (bus *Bus) Handle(cmd Command) (any, error) {
 	hdl, err := bus.handler(cmd)
 	if err != nil {
@@ -129,7 +118,28 @@ func (bus *Bus) Handle(cmd Command) (any, error) {
 	return bus.handle(hdl, cmd)
 }
 
+// HandleAsync processes the command asynchronously using workers through their respective handler.
+// It also returns an *Async struct which allows clients to optionally ```Await``` for the command to be processed.
+func (bus *Bus) HandleAsync(cmd Command) (*Async, error) {
+	hdl, err := bus.handler(cmd)
+	if err != nil {
+		return nil, err
+	}
+	async := newAsync(hdl, cmd)
+	bus.asyncCommandsQueue <- async
+	return async, nil
+}
+
+// HandleClosure processes a closure command asynchronously using workers.
+// It also returns an *Async struct which allows clients to optionally ```Await``` for the command to be processed.
+func (bus *Bus) HandleClosure(cmd ClosureCommand) *Async {
+	async := newAsyncClosure(cmd)
+	bus.asyncCommandsQueue <- async
+	return async
+}
+
 // Schedule allows commands to be scheduled to be executed asynchronously.
+// Check https://github.com/io-da/schedule for ```*Schedule``` usage.
 func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) (*uuid.UUID, error) {
 	hdl, err := bus.handler(cmd)
 	if err != nil {
@@ -147,24 +157,12 @@ func (bus *Bus) RemoveScheduled(keys ...uuid.UUID) {
 // Shutdown the command bus gracefully.
 // *Async commands accessed while shutting down will be disregarded*.
 func (bus *Bus) Shutdown() {
-	if atomic.CompareAndSwapUint32(bus.shuttingDown, 0, 1) {
+	if bus.shuttingDown.enable() {
 		go bus.shutdown()
 	}
 }
 
 //-----Private Functions------//
-
-func (bus *Bus) initialize() bool {
-	return atomic.CompareAndSwapUint32(bus.initialized, 0, 1)
-}
-
-func (bus *Bus) isInitialized() bool {
-	return atomic.LoadUint32(bus.initialized) == 1
-}
-
-func (bus *Bus) isShuttingDown() bool {
-	return atomic.LoadUint32(bus.shuttingDown) == 1
-}
 
 func (bus *Bus) worker(asyncCommandsQueue <-chan *Async, closed chan<- bool) {
 	for async := range asyncCommandsQueue {
@@ -200,7 +198,13 @@ func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
 }
 
 func (bus *Bus) handleAsync(async *Async) {
-	data, err := bus.handle(async.hdl, async.cmd)
+	var data any
+	var err error
+	if async.isCls {
+		data, err = async.cls()
+	} else {
+		data, err = bus.handle(async.hdl, async.cmd)
+	}
 	if err != nil {
 		async.fail(err)
 		return
@@ -208,29 +212,15 @@ func (bus *Bus) handleAsync(async *Async) {
 	async.success(data)
 }
 
-func (bus *Bus) addToAsyncQueue(hdl Handler, cmd Command) *Async {
-	async := newAsync(hdl, cmd)
-	bus.asyncCommandsQueue <- async
-	return async
-}
-
-func (bus *Bus) workerUp() {
-	atomic.AddUint32(bus.workers, 1)
-}
-
-func (bus *Bus) workerDown() {
-	atomic.AddUint32(bus.workers, ^uint32(0))
-}
-
 func (bus *Bus) shutdown() {
-	for atomic.LoadUint32(bus.workers) > 0 {
+	for !bus.workers.is(0) {
 		bus.asyncCommandsQueue <- nil
 		<-bus.closed
-		bus.workerDown()
+		bus.workers.decrement()
 	}
 	bus.scheduleProcessor.shutdown()
-	atomic.CompareAndSwapUint32(bus.initialized, 1, 0)
-	atomic.CompareAndSwapUint32(bus.shuttingDown, 1, 0)
+	bus.initialized.disable()
+	bus.shuttingDown.disable()
 }
 
 func (bus *Bus) handler(cmd Command) (hdl Handler, err error) {
@@ -239,12 +229,12 @@ func (bus *Bus) handler(cmd Command) (hdl Handler, err error) {
 		bus.error(cmd, err)
 		return
 	}
-	if !bus.isInitialized() {
+	if !bus.initialized.enabled() {
 		err = BusNotInitializedError
 		bus.error(cmd, err)
 		return
 	}
-	if bus.isShuttingDown() {
+	if bus.shuttingDown.enabled() {
 		err = BusIsShuttingDownError
 		bus.error(cmd, err)
 		return

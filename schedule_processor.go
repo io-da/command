@@ -3,7 +3,6 @@ package command
 import (
 	"github.com/google/uuid"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -12,7 +11,7 @@ type scheduleProcessor struct {
 	bus               *Bus
 	scheduledCommands map[uuid.UUID]*scheduledCommand
 	triggerSignal     chan bool
-	shuttingDown      *uint32
+	shuttingDown      *flag
 	sleepTimer        *time.Timer
 	sleepUntil        time.Time
 }
@@ -22,7 +21,7 @@ func newScheduleProcessor(bus *Bus) *scheduleProcessor {
 		bus:               bus,
 		scheduledCommands: make(map[uuid.UUID]*scheduledCommand),
 		triggerSignal:     make(chan bool, 1),
-		shuttingDown:      new(uint32),
+		shuttingDown:      newFlag(),
 	}
 	go pro.process()
 	return pro
@@ -47,12 +46,13 @@ func (pro *scheduleProcessor) remove(keys ...uuid.UUID) {
 }
 
 func (pro *scheduleProcessor) shutdown() {
-	atomic.CompareAndSwapUint32(pro.shuttingDown, 0, 1)
-	pro.trigger()
+	if pro.shuttingDown.enable() {
+		pro.trigger()
+	}
 }
 
 func (pro *scheduleProcessor) process() {
-	for atomic.LoadUint32(pro.shuttingDown) == 0 {
+	for !pro.shuttingDown.enabled() {
 		pro.Lock()
 		now := time.Now()
 		pro.sleepUntil = time.Time{}
@@ -64,7 +64,8 @@ func (pro *scheduleProcessor) process() {
 			}
 
 			if now.After(following) || now.Equal(following) {
-				pro.bus.addToAsyncQueue(schCmd.hdl, schCmd.cmd)
+				async := newAsync(schCmd.hdl, schCmd.cmd)
+				pro.bus.asyncCommandsQueue <- async
 				if err := schCmd.sch.Next(); err != nil {
 					delete(pro.scheduledCommands, key)
 					continue
