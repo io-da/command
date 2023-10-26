@@ -155,8 +155,7 @@ Since ```1.2```, the bus also has built in support for [github.com/io-da/schedul
 Using ```bus.Schedule```, one may schedule a command to be processed at certain times or even following a cron like pattern.
 
 ## Benchmarks
-All the benchmarks are performed with command handlers calculating the fibonacci of 1000.  
-CPU: 11th Gen Intel(R) Core(TM) i9-11950H @ 2.60GHz  
+All the benchmarks are performed with command handlers calculating the fibonacci of 1000.
 
 | Benchmark Type | Time |
 | :--- | :---: |
