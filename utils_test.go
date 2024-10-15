@@ -5,15 +5,27 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+	"testing"
+	"time"
 )
 
 // ------Enums------//
+
 const (
-	Unidentified Identifier = iota
-	TestCommand1
-	TestCommand2
-	TestLiteralCommand
-	TestErrorCommand
+	Unidentified       Identifier = "Unidentified"
+	TestCommand1       Identifier = "TestCommand1"
+	TestCommand2       Identifier = "TestCommand2"
+	TestCommandSlow    Identifier = "TestCommandSlow"
+	TestLiteralCommand Identifier = "TestLiteralCommand"
+	TestErrorCommand   Identifier = "TestErrorCommand"
+)
+
+const (
+	handleTimeoutError     = "timeout reached"
+	unexpectedDataError    = "unexpected data"
+	commandFailedError     = "command failed"
+	middlewareInwardError  = "inward middleware failure"
+	middlewareOutwardError = "outward middleware failure"
 )
 
 //------Commands------//
@@ -38,6 +50,12 @@ func (*testCommand2) Identifier() Identifier {
 	return TestCommand2
 }
 
+type testCommandSlow struct{}
+
+func (*testCommandSlow) Identifier() Identifier {
+	return TestCommandSlow
+}
+
 type testCommand3 string
 
 func (testCommand3) Identifier() Identifier {
@@ -50,18 +68,28 @@ func (*testCommandError) Identifier() Identifier {
 	return TestErrorCommand
 }
 
+type testFakeClosureCommand struct{}
+
+func (*testFakeClosureCommand) Identifier() Identifier {
+	return ClosureIdentifier
+}
+
 //------Handlers------//
 
 type testHandler struct {
-	identifier Identifier
+	handles Identifier
 }
 
 func (hdl *testHandler) Handles() Identifier {
-	return hdl.identifier
+	return hdl.handles
 }
 
 func (hdl *testHandler) Handle(cmd Command) (data any, err error) {
-	fibonacci(1000)
+	if _, ok := any(cmd).(*testCommandSlow); ok {
+		slowFunc()
+	} else {
+		fastFunc()
+	}
 	return
 }
 
@@ -72,21 +100,25 @@ func (hdl *testErrorHandler) Handles() Identifier {
 }
 
 func (hdl *testErrorHandler) Handle(cmd Command) (data any, err error) {
-	err = errors.New("command failed")
+	err = errors.New(commandFailedError)
 	return
 }
 
 type testAsyncHandler struct {
-	wg         *sync.WaitGroup
-	identifier Identifier
+	wg      *sync.WaitGroup
+	handles Identifier
 }
 
 func (hdl *testAsyncHandler) Handles() Identifier {
-	return hdl.identifier
+	return hdl.handles
 }
 
 func (hdl *testAsyncHandler) Handle(cmd Command) (data any, err error) {
-	fibonacci(1000)
+	if _, ok := any(cmd).(*testCommandSlow); ok {
+		slowFunc()
+	} else {
+		fastFunc()
+	}
 	hdl.wg.Done()
 	return
 }
@@ -103,11 +135,38 @@ func (hdl *testAsyncAwaitHandler) Handle(cmd Command) (data any, err error) {
 	data = "not ok"
 	switch any(cmd).(type) {
 	case *testCommand1:
+		fastFunc()
 		data = nil
 	case *testCommand2:
+		fastFunc()
 		data = "ok"
+	case *testCommandSlow:
+		slowFunc()
+		data = "slow ok"
 	}
 	return data, err
+}
+
+type testClosureHandler struct {
+}
+
+func (hdl *testClosureHandler) Handles() Identifier {
+	return ClosureIdentifier
+}
+
+func (hdl *testClosureHandler) Handle(cmd Command) (data any, err error) {
+	if cmd, ok := any(cmd).(Closure); ok {
+		data, err = cmd()
+		if err != nil {
+			return
+		}
+		data, ok := data.(int)
+		if !ok {
+			return nil, errors.New(unexpectedDataError)
+		}
+		return 2 + int(data), nil
+	}
+	return
 }
 
 //------Error Handlers------//
@@ -144,6 +203,7 @@ func (hdl *storeErrorsHandler) key(cmd Command) Identifier {
 type testLoggerMiddleware struct {
 	logHandler chan string
 	testId     string
+	logged     int
 }
 
 func newTestLoggerMiddleware(logHandler chan string, testId string) *testLoggerMiddleware {
@@ -153,18 +213,16 @@ func newTestLoggerMiddleware(logHandler chan string, testId string) *testLoggerM
 	}
 }
 
-func (hdl *testLoggerMiddleware) HandleInward(cmd Command) error {
-	hdl.log(fmt.Sprintf("%s|inward|%d", hdl.testId, cmd.Identifier()))
-	return nil
-}
-
-func (hdl *testLoggerMiddleware) HandleOutward(cmd Command, data any, err error) (any, error) {
-	hdl.log(fmt.Sprintf("%s|outward|%d", hdl.testId, cmd.Identifier()))
-	return data, nil
+func (hdl *testLoggerMiddleware) Handle(cmd Command, next Next) (data any, err error) {
+	hdl.log(fmt.Sprintf("%s|inward|%s", hdl.testId, cmd.Identifier()))
+	data, err = next(cmd)
+	hdl.log(fmt.Sprintf("%s|outward|%s", hdl.testId, cmd.Identifier()))
+	return
 }
 
 func (hdl *testLoggerMiddleware) log(message string) {
 	hdl.logHandler <- message
+	hdl.logged++
 }
 
 type testErrorMiddleware struct {
@@ -172,21 +230,28 @@ type testErrorMiddleware struct {
 	outwardFailure bool
 }
 
-func (hdl *testErrorMiddleware) HandleInward(cmd Command) error {
+func (hdl *testErrorMiddleware) Handle(cmd Command, next Next) (data any, err error) {
 	if hdl.inwardFailure {
-		return errors.New("inward middleware failure")
+		return nil, errors.New(middlewareInwardError)
 	}
-	return nil
+	data, err = next(cmd)
+	if hdl.outwardFailure {
+		return nil, errors.New(middlewareOutwardError)
+	}
+	return
 }
 
-func (hdl *testErrorMiddleware) HandleOutward(cmd Command, data any, err error) (any, error) {
-	if hdl.outwardFailure {
-		return nil, errors.New("outward middleware failure")
-	}
-	return data, nil
+type testMiddleware struct{}
+
+func (hdl *testMiddleware) Handle(cmd Command, next Next) (data any, err error) {
+	fastFunc()
+	return next(cmd)
 }
 
 //------General------//
+
+var fastFunc = func() { fibonacci(100) }
+var slowFunc = func() { fibonacci(100000) }
 
 func fibonacci(n uint) *big.Int {
 	if n < 2 {
@@ -199,4 +264,10 @@ func fibonacci(n uint) *big.Int {
 	}
 
 	return b
+}
+
+func setupHandleTimeout(t *testing.T) *time.Timer {
+	return time.AfterFunc(time.Second*10, func() {
+		t.Fatal(handleTimeoutError)
+	})
 }

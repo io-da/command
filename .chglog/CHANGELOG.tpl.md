@@ -6,7 +6,7 @@
 ### {{ .Title }}
 
 {{ range .Commits -}}
-* {{ .Subject }}
+- {{ .Subject }}
 {{ end }}
 {{ end -}}
 

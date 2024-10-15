@@ -1,9 +1,10 @@
 package command
 
 import (
-	"github.com/google/uuid"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type scheduleProcessor struct {
@@ -102,8 +103,7 @@ func (pro *scheduleProcessor) determineSleepDuration() time.Duration {
 	if pro.sleepUntil.IsZero() || len(pro.scheduledCommands) <= 0 {
 		return time.Hour
 	}
-
-	return pro.sleepUntil.Sub(time.Now())
+	return time.Until(pro.sleepUntil)
 }
 
 func (pro *scheduleProcessor) updateSleepTimer(d time.Duration) {

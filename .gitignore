@@ -2,3 +2,4 @@
 .vscode
 c.out
 cc-test-reporter
+coverage.out

@@ -61,21 +61,25 @@ Any time an error occurs within the bus, it will be passed on to the error handl
 
 
 ### Middlewares
-Middlewares are any type that implements the _InwardMiddleware_ or the _OutwardMiddleware_ interface.  
-Middlewares are optional and provided to the _Bus_ using the ```bus.SetInwardMiddlewares``` and ```bus.SetOutwardMiddlewares``` functions.  
-An _InwardMiddleware_ handles every command before it is provided to its respective handler.  
-An _OutwardMiddleware_ handles every command that was successfully processed by its respective handler. These middlewares are also provided with the data or error returned by the command handler. Allowing potential data/error handling, such as transformations.
-
-**The order in which the middlewares are provided to the Bus is always respected. Additionally, if a middleware returns an error, it interrupts the flow and the command is no longer passed along to the next step.**
+Middlewares are any type that implements the _Middleware_ interface.  
 ```go
-type InwardMiddleware interface {
-    HandleInward(cmd Command) error
-}
-
-type OutwardMiddleware interface {
-    HandleOutward(cmd Command, data any, err error) error
+type Middleware interface {
+    Handle(cmd Command, next Next) (any, error)
 }
 ```
+Middlewares are optional and provided to the _Bus_ using the ```bus.SetMiddlewares``` function.  
+A _Middleware_ handles every command before it is provided to its respective handler.  
+Middlewares may be used to modify or completely prevent the command execution.
+Middlewares are responsible for the execution of the next step:
+```go
+func (Middleware) Handle(cmd Command, next Next) (any, error) {
+    // do something before...
+    data, err := next(cmd)
+    // do something after...
+    return data, err
+}
+```
+**The order in which the middlewares are provided to the Bus is always respected.**
 
 ### The Bus
 _Bus_ is the _struct_ that will be used to trigger all the application's commands.  
@@ -85,12 +89,14 @@ The application should instantiate the _Bus_ once and then use it's reference to
 
 #### Handling Commands
 The _Bus_ provides multiple ways to handle commands.  
-> **Synchronous**. The bus processes the command immediately and returns the result from the handler.
+##### Synchronous
+> The bus processes the command immediately and returns the result from the handler.
 >```go
 >data, err := bus.Handle(&FooBar{})
 >```
 
-> **Asynchronous**. The bus processes the command using workers. It is no-blocking.  
+##### Asynchronous
+> The bus processes the command using workers. It is no-blocking.  
 > It is possible however to _Await_ for the command to finish being processed.
 >```go
 >as, _ := bus.HandleAsync(&FooBar{})
@@ -98,20 +104,34 @@ The _Bus_ provides multiple ways to handle commands.
 >data, err := as.Await()
 >```
 
-> **Closures**. The bus also accepts a closure to be provided.  
-> It will be handled in an asynchronous manner using workers. These also support _Await_.
+##### Asynchronous List
+> The bus processes the provided commands using workers. It is no-blocking.  
+> It is possible however to _Await_ for these commands to finish being processed.
+> The return type is a _*AsyncList_. This struct exposes a few methods:
+> - _Await_ waits for all the commands to finish processing similarly to a regular _*Async_ type. However, it returns `[]any, error`. The order of the returned results matches the order of the provided commands. The error joins all the resulting errors.
+> - _AwaitIterator_ returns an iterator to process the results in the order they are handled. This means that if multiple commands are issued, the fastest ones will be received first. The value that is returned by each iteration is a _AsyncResult_. Aside from the _Data_ and _Error_, this struct also exposes the _Index_ matching the order of the issued commands.
 >```go
->as, _ := bus.HandleClosure(func() (data any, err error) {
+>asl, _ := bus.HandleAsyncList(&FooBar{}, &FooBar2{}, &FooBar3{})
+>// do something
+>data, err := asl.Await()
+>```
+
+##### Closures
+> The bus also accepts closure commands to be provided.  
+> These will be handled similarly to any other command. Using the type _Closure_.
+>```go
+>as, _ := bus.HandleAsync(Closure(func() (data any, err error) {
 >   return "foo bar", nil
->})
+>}))
 >// do something
 >data, err := as.Await()
 >```
 
-> **Schedule**. The bus will use a schedule processor to handle the provided command according to a _*Schedule_  struct.  
+##### Schedule
+> The bus will use a schedule processor to handle the provided command according to a _*Schedule_  struct.  
 > More information about _*Schedule_ can be found [here](https://github.com/io-da/schedule).
 >```go
->uuid, err := bus.Schedule(&FooBar{}, schedule.At(time.Now())))
+>uuid, err := bus.Schedule(&FooBar{}, schedule.At(time.Now()))
 >// if the scheduled command needs to be removed during runtime.
 >bus.RemoveScheduled(uuid)
 >```
@@ -148,6 +168,8 @@ command.BusNotInitializedError
 command.BusIsShuttingDownError
 command.OneHandlerPerCommandError
 command.HandlerNotFoundError
+command.EmptyAwaitListError
+command.InvalidClosureCommandError
 ```
 
 #### Scheduled Commands
@@ -155,20 +177,28 @@ Since ```1.2```, the bus also has built in support for [github.com/io-da/schedul
 Using ```bus.Schedule```, one may schedule a command to be processed at certain times or even following a cron like pattern.
 
 ## Benchmarks
-All the benchmarks are performed with command handlers calculating the fibonacci of 1000.
+All the benchmarks are performed with command handlers calculating the fibonacci of 100.
+CPU: Apple M3 Pro
 
 | Benchmark Type | Time |
 | :--- | :---: |
-| Sync Commands | 15828 ns/op |
-| Async Commands | 2808 ns/op |
+| Sync Commands | 660 ns/op |
+| Async Commands | 425 ns/op |
+
+For reference, here is the benchmark of the function used (fibonacci of 100) for simulation purposes, when run directly:  
+| Benchmark Type | Time |
+| :--- | :---: |
+| fibonacci(100) | 643 ns/op |
+
+These results imply that the infrastructure induces a small overhead of about `10-20ns`.  
+Naturally, the reason for the async's method improved performance is the fact that the executions of the fibonacci function are being spread over multiple workers.
 
 ## Examples
 An optional constants list of _Command_ identifiers (idiomatic ```enum```) for consistency
 ```go
 const (
-   Unidentified Identifier = iota
-   FooCommand
-   BarCommand
+	FooCommand Identifier = "FooCommand"
+	BarCommand Identifier = "BarCommand"
 )
 ```
 #### Example Commands
@@ -248,6 +278,13 @@ func main() {
     sch := schedule.As(schedule.Cron().EveryDay())
     bus.Schedule(&fooCommand{}, sch)
 }
+```
+
+## Change Log
+The change log is generated using the tool [git-chglog](https://github.com/git-chglog/).  
+Thanks to their amazing work, the CHANGELOG.md can be easily regenerated using the following command:
+```sh
+git-chglog -o CHANGELOG.md
 ```
 
 ## Contributing

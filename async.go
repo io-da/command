@@ -2,14 +2,13 @@ package command
 
 // Async is the struct returned from async commands.
 type Async struct {
-	hdl     Handler
-	cmd     Command
-	cls     ClosureCommand
-	isCls   bool
-	data    any
-	done    *flag
-	pending chan bool
-	err     error
+	hdl      Handler
+	cmd      Command
+	data     any
+	done     *flag
+	pending  chan bool
+	listener func(as *Async)
+	err      error
 }
 
 func newAsync(hdl Handler, cmd Command) *Async {
@@ -21,42 +20,49 @@ func newAsync(hdl Handler, cmd Command) *Async {
 	}
 }
 
-func newAsyncClosure(cls ClosureCommand) *Async {
-	return &Async{
-		cls:     cls,
-		isCls:   true,
-		done:    newFlag(),
-		pending: make(chan bool, 1),
-	}
-}
-
-//------Fetch Data------//
-
 // Await for the command to be processed.
-func (res *Async) Await() (any, error) {
-	if !res.done.enabled() {
-		<-res.pending
+func (as *Async) Await() (any, error) {
+	as.await()
+	if as.err != nil {
+		return nil, as.err
 	}
-	if res.err != nil {
-		return nil, res.err
-	}
-	return res.data, nil
+	return as.data, nil
 }
 
 //------Internal------//
 
-func (res *Async) notifyDone() {
-	if res.done.enable() {
-		res.pending <- true
+func (as *Async) await() {
+	if !as.done.enabled() {
+		<-as.pending
 	}
 }
 
-func (res *Async) fail(err error) {
-	res.err = err
-	res.notifyDone()
+func (as *Async) notifyDone() {
+	if as.done.enable() {
+		as.pending <- true
+		as.notifyListener()
+	}
 }
 
-func (res *Async) success(data any) {
-	res.data = data
-	res.notifyDone()
+func (as *Async) fail(err error) {
+	as.err = err
+	as.notifyDone()
+}
+
+func (as *Async) success(data any) {
+	as.data = data
+	as.notifyDone()
+}
+
+func (as *Async) setListener(listener func(as *Async)) {
+	as.listener = listener
+	if as.done.enabled() {
+		as.notifyListener()
+	}
+}
+
+func (as *Async) notifyListener() {
+	if as.listener != nil {
+		as.listener(as)
+	}
 }

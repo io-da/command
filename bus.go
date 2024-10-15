@@ -1,9 +1,10 @@
 package command
 
 import (
+	"runtime"
+
 	"github.com/google/uuid"
 	"github.com/io-da/schedule"
-	"runtime"
 )
 
 // Bus is the only struct exported and required for the command bus usage.
@@ -16,8 +17,7 @@ type Bus struct {
 	workers            *counter
 	handlers           map[Identifier]Handler
 	errorHandlers      []ErrorHandler
-	inwardMiddlewares  []InwardMiddleware
-	outwardMiddlewares []OutwardMiddleware
+	middlewares        []Middleware
 	asyncCommandsQueue chan *Async
 	closed             chan bool
 	scheduleProcessor  *scheduleProcessor
@@ -27,16 +27,15 @@ type Bus struct {
 // The Initialization of the Bus is performed separately (Initialize function) for dependency injection purposes.
 func NewBus() *Bus {
 	bus := &Bus{
-		workerPoolSize:     runtime.GOMAXPROCS(0),
-		queueBuffer:        100,
-		initialized:        newFlag(),
-		shuttingDown:       newFlag(),
-		workers:            newCounter(),
-		handlers:           make(map[Identifier]Handler),
-		errorHandlers:      make([]ErrorHandler, 0),
-		inwardMiddlewares:  make([]InwardMiddleware, 0),
-		outwardMiddlewares: make([]OutwardMiddleware, 0),
-		closed:             make(chan bool),
+		workerPoolSize: runtime.GOMAXPROCS(0),
+		queueBuffer:    100,
+		initialized:    newFlag(),
+		shuttingDown:   newFlag(),
+		workers:        newCounter(),
+		handlers:       make(map[Identifier]Handler),
+		errorHandlers:  make([]ErrorHandler, 0),
+		middlewares:    make([]Middleware, 0),
+		closed:         make(chan bool),
 	}
 	bus.scheduleProcessor = newScheduleProcessor(bus)
 	return bus
@@ -70,23 +69,20 @@ func (bus *Bus) SetErrorHandlers(hdls ...ErrorHandler) {
 	}
 }
 
-// SetInwardMiddlewares may optionally be used to provide a list of inward middlewares.
+// SetMiddlewares may optionally be used to provide a list of middlewares.
 // They will receive and process every command that is about to be handled.
-// *The order the middlewares are provided is always respected*.
+// Middlewares may be used to modify or completely prevent the command execution.
+// Middlewares are responsible for the execution of the next step:
+//
+//	Handle(cmd Command, next Next) (any, error) {
+//	 return next(cmd)
+//	}
+//
+// *The order in which the middlewares are provided to the Bus is always respected*.
 // Middlewares may only be provided *before* the bus is initialized.
-func (bus *Bus) SetInwardMiddlewares(mdls ...InwardMiddleware) {
+func (bus *Bus) SetMiddlewares(mdls ...Middleware) {
 	if !bus.initialized.enabled() {
-		bus.inwardMiddlewares = mdls
-	}
-}
-
-// SetOutwardMiddlewares may optionally be used to provide a list of outward middlewares.
-// They will receive and process every command that was handled.
-// *The order the middlewares are provided is always respected*.
-// Middlewares may only be provided *before* the bus is initialized.
-func (bus *Bus) SetOutwardMiddlewares(mdls ...OutwardMiddleware) {
-	if !bus.initialized.enabled() {
-		bus.outwardMiddlewares = mdls
+		bus.middlewares = mdls
 	}
 }
 
@@ -94,10 +90,18 @@ func (bus *Bus) SetOutwardMiddlewares(mdls ...OutwardMiddleware) {
 // There can only be one handler per command.
 func (bus *Bus) Initialize(hdls ...Handler) error {
 	if bus.initialized.enable() {
+		closureHandlerProvided := false
 		for _, hdl := range hdls {
 			if _, exists := bus.handlers[hdl.Handles()]; exists {
 				return OneHandlerPerCommandError
 			}
+			bus.handlers[hdl.Handles()] = hdl
+			if hdl.Handles() == ClosureIdentifier {
+				closureHandlerProvided = true
+			}
+		}
+		if !closureHandlerProvided {
+			hdl := &ClosureHandler{}
 			bus.handlers[hdl.Handles()] = hdl
 		}
 		bus.asyncCommandsQueue = make(chan *Async, bus.queueBuffer)
@@ -111,37 +115,45 @@ func (bus *Bus) Initialize(hdls ...Handler) error {
 
 // Handle processes the command synchronously through their respective handler.
 func (bus *Bus) Handle(cmd Command) (any, error) {
-	hdl, err := bus.handler(cmd)
+	hdl, err := bus.getHandler(cmd)
 	if err != nil {
 		return nil, err
 	}
-	return bus.handle(hdl, cmd, nil)
+	return bus.handle(hdl, cmd)
 }
 
 // HandleAsync processes the command asynchronously using workers through their respective handler.
 // It also returns an *Async struct which allows clients to optionally ```Await``` for the command to be processed.
 func (bus *Bus) HandleAsync(cmd Command) (*Async, error) {
-	hdl, err := bus.handler(cmd)
+	async, err := bus.prepareAsync(cmd)
 	if err != nil {
 		return nil, err
 	}
-	async := newAsync(hdl, cmd)
 	bus.asyncCommandsQueue <- async
 	return async, nil
 }
 
-// HandleClosure processes a closure command asynchronously using workers.
-// It also returns an *Async struct which allows clients to optionally ```Await``` for the command to be processed.
-func (bus *Bus) HandleClosure(cmd ClosureCommand) *Async {
-	async := newAsyncClosure(cmd)
-	bus.asyncCommandsQueue <- async
-	return async
+// HandleAsyncList processes the provided commands asynchronously using workers through their respective handler.
+// It also returns an *AsyncList struct which allows clients to optionally ```Await``` for the commands respectively.
+func (bus *Bus) HandleAsyncList(cmds ...Command) (*AsyncList, error) {
+	asl := &AsyncList{make([]*Async, len(cmds))}
+	for i, cmd := range cmds {
+		async, err := bus.prepareAsync(cmd)
+		if err != nil {
+			return nil, err
+		}
+		asl.cmds[i] = async
+	}
+	for _, async := range asl.cmds {
+		bus.asyncCommandsQueue <- async
+	}
+	return asl, nil
 }
 
 // Schedule allows commands to be scheduled to be executed asynchronously.
 // Check https://github.com/io-da/schedule for ```*Schedule``` usage.
 func (bus *Bus) Schedule(cmd Command, sch *schedule.Schedule) (*uuid.UUID, error) {
-	hdl, err := bus.handler(cmd)
+	hdl, err := bus.getHandler(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +174,7 @@ func (bus *Bus) Shutdown() {
 	}
 }
 
-//-----Private Functions------//
+//-----Internal------//
 
 func (bus *Bus) worker(asyncCommandsQueue <-chan *Async, closed chan<- bool) {
 	for async := range asyncCommandsQueue {
@@ -174,41 +186,44 @@ func (bus *Bus) worker(asyncCommandsQueue <-chan *Async, closed chan<- bool) {
 	closed <- true
 }
 
-func (bus *Bus) handle(hdl Handler, cmd Command, cls ClosureCommand) (data any, err error) {
-	for _, inMdl := range bus.inwardMiddlewares {
-		if err = inMdl.HandleInward(cmd); err != nil {
-			bus.error(cmd, err)
-			return
-		}
-	}
-	if cls != nil {
-		data, err = cls()
-	} else {
-		data, err = hdl.Handle(cmd)
-	}
+func (bus *Bus) prepareAsync(cmd Command) (*Async, error) {
+	hdl, err := bus.getHandler(cmd)
 	if err != nil {
-		data = nil
-		bus.error(cmd, err)
+		return nil, err
 	}
-	for _, outMdl := range bus.outwardMiddlewares {
-		var mdlErr error
-		if data, mdlErr = outMdl.HandleOutward(cmd, data, err); mdlErr != nil {
-			data = nil
-			err = mdlErr
-			bus.error(cmd, err)
-			return
-		}
-	}
-	return
+	return newAsync(hdl, cmd), nil
 }
 
 func (bus *Bus) handleAsync(async *Async) {
-	data, err := bus.handle(async.hdl, async.cmd, async.cls)
+	data, err := bus.handle(async.hdl, async.cmd)
 	if err != nil {
 		async.fail(err)
 		return
 	}
 	async.success(data)
+}
+
+func (bus *Bus) handle(hdl Handler, cmd Command) (data any, err error) {
+	data, err = bus.handleMiddlewares(hdl, cmd, 0)
+	if err != nil {
+		data = nil
+		bus.error(cmd, err)
+	}
+	return
+}
+
+func (bus *Bus) handleMiddlewares(hdl Handler, cmd Command, currentMdlIdx int) (data any, err error) {
+	if len(bus.middlewares) == 0 {
+		return hdl.Handle(cmd)
+	}
+	mdl := bus.middlewares[currentMdlIdx]
+	currentMdlIdx++
+	if currentMdlIdx < len(bus.middlewares) {
+		return mdl.Handle(cmd, func(cmd Command) (any, error) {
+			return bus.handleMiddlewares(hdl, cmd, currentMdlIdx)
+		})
+	}
+	return mdl.Handle(cmd, hdl.Handle)
 }
 
 func (bus *Bus) shutdown() {
@@ -222,7 +237,7 @@ func (bus *Bus) shutdown() {
 	bus.shuttingDown.disable()
 }
 
-func (bus *Bus) handler(cmd Command) (hdl Handler, err error) {
+func (bus *Bus) getHandler(cmd Command) (hdl Handler, err error) {
 	if cmd == nil {
 		err = InvalidCommandError
 		bus.error(cmd, err)

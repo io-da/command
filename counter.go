@@ -12,12 +12,12 @@ func newCounter() *counter {
 	}
 }
 
-func (c *counter) increment() {
-	c.Add(1)
+func (c *counter) increment() uint32 {
+	return c.Add(1)
 }
 
-func (c *counter) decrement() {
-	c.Add(^uint32(0))
+func (c *counter) decrement() uint32 {
+	return c.Add(^uint32(0))
 }
 
 func (c *counter) is(v uint32) bool {

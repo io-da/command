@@ -19,4 +19,8 @@ const (
 	OneHandlerPerCommandError = BusError("command: there can only be one handler per command")
 	// HandlerNotFoundError will be returned when no handler is found to the provided command.
 	HandlerNotFoundError = BusError("command: no handler found for the command provided")
+	// EmptyAwaitListError will be returned when attempting to await an empty AwaitList
+	EmptyAwaitListError = BusError("command: await list is empty")
+	// InvalidClosureCommandError will be returned when attempting to handle a command with the closure identifier but invalid type
+	InvalidClosureCommandError = BusError("command: invalid closure command")
 )
