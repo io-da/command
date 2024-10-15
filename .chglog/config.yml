@@ -10,11 +10,15 @@ options:
          - feat
          - fix
          - perf
+         - ref
+         - chore
   commit_groups:
      title_maps:
        feat: Features
        fix: Bug Fixes
        perf: Performance Improvements
+       ref: Refactor
+       chore: Chore
   header:
     pattern: "^(\\w*)\\:\\s(.*)$"
     pattern_maps:

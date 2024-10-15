@@ -4,7 +4,7 @@
 
 ### Bug Fixes
 
-* allows middlewares to also be processed with closure commands
+- allows middlewares to also be processed with closure commands
 
 
 <a name="v1.4.0"></a>
@@ -12,7 +12,7 @@
 
 ### Features
 
-* implements support for closure commands
+- implements support for closure commands
 
 
 <a name="v1.3.2"></a>
@@ -20,7 +20,7 @@
 
 ### Bug Fixes
 
-* removes usage of slices package for backwards compatibility checks
+- removes usage of slices package for backwards compatibility checks
 
 
 <a name="v1.3.1"></a>
@@ -28,7 +28,7 @@
 
 ### Features
 
-* improves middleware usage and adds missing documentation
+- improves middleware usage and adds missing documentation
 
 
 <a name="v1.3.0"></a>
@@ -36,9 +36,9 @@
 
 ### Features
 
-* implements middleware feature and adds respective tests
-* implements inward and outward middlewares
-* implements await on async commands. feat: refactors bus to enforce one handler per command.
+- implements middleware feature and adds respective tests
+- implements inward and outward middlewares
+- implements await on async commands. feat: refactors bus to enforce one handler per command.
 
 
 <a name="v1.2.8"></a>
@@ -46,8 +46,8 @@
 
 ### Bug Fixes
 
-* go.yaml for code coverage
-* test that was causing data race
+- go.yaml for code coverage
+- test that was causing data race
 
 
 <a name="v1.2.7"></a>
