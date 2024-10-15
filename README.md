@@ -177,7 +177,7 @@ Since ```1.2```, the bus also has built in support for [github.com/io-da/schedul
 Using ```bus.Schedule```, one may schedule a command to be processed at certain times or even following a cron like pattern.
 
 ## Benchmarks
-All the benchmarks are performed with command handlers calculating the fibonacci of 100.
+All the benchmarks are performed with command handlers calculating the fibonacci of 100.  
 CPU: Apple M3 Pro
 
 | Benchmark Type | Time |
