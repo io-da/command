@@ -10,6 +10,7 @@ type Async struct {
 	data     any
 	done     *flag
 	pending  chan bool
+	notify   *flag
 	listener func(as *Async)
 	err      error
 }
@@ -19,6 +20,7 @@ func newAsync(hdl Handler, cmd Command) *Async {
 		hdl:     hdl,
 		cmd:     cmd,
 		done:    newFlag(),
+		notify:  newFlag(),
 		pending: make(chan bool, 1),
 	}
 }
@@ -42,34 +44,40 @@ func (as *Async) await() {
 
 func (as *Async) notifyDone() {
 	if as.done.enable() {
-		as.pending <- true
 		as.notifyListener()
+		as.pending <- true
 	}
 }
 
 func (as *Async) fail(err error) {
+	as.Lock()
 	as.err = err
 	as.notifyDone()
+	as.Unlock()
 }
 
 func (as *Async) success(data any) {
+	as.Lock()
 	as.data = data
 	as.notifyDone()
+	as.Unlock()
 }
 
 func (as *Async) setListener(listener func(as *Async)) {
 	as.Lock()
-	as.listener = listener
-	as.Unlock()
 	if as.done.enabled() {
-		as.notifyListener()
+		listener(as)
+		return
 	}
+	if as.notify.enable() {
+		as.listener = listener
+	}
+	as.Unlock()
+
 }
 
 func (as *Async) notifyListener() {
-	as.Lock()
-	if as.listener != nil {
+	if as.notify.disable() {
 		as.listener(as)
 	}
-	as.Unlock()
 }

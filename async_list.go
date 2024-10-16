@@ -1,6 +1,9 @@
 package command
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Async is the struct returned from async commands.
 type AsyncList struct {
@@ -48,15 +51,16 @@ func (asl *AsyncList) AwaitIterator() (<-chan AsyncResult, error) {
 	return results, nil
 }
 
-func (asl *AsyncList) generateListener(i int, asyncResults chan<- AsyncResult, processed *counter, total uint32) func(as *Async) {
+func (asl *AsyncList) generateListener(i int, results chan<- AsyncResult, processed *counter, total uint32) func(as *Async) {
 	return func(as *Async) {
-		asyncResults <- AsyncResult{
+		results <- AsyncResult{
 			Index: i,
 			Data:  as.data,
 			Err:   as.err,
 		}
 		if processed.increment() == total {
-			close(asyncResults)
+			close(results)
+			fmt.Println("CHANNEL CLOSED")
 		}
 	}
 }
