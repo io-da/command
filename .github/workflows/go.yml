@@ -25,7 +25,7 @@ jobs:
     - name: Build
       run: go build -v ./...
     - name: Test
-      run: go test -race -v ./...
+      run: go test -race -v -coverprofile=c.out ./...
     - name: Setup Code Climate test-reporter
       run: |
         curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
@@ -35,6 +35,4 @@ jobs:
         CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
       run: |
         ./cc-test-reporter before-build
-        GO111MODULE=off go get .
-        GO111MODULE=off go test -race -coverprofile=c.out ./...
         ./cc-test-reporter after-build --exit-code $?
