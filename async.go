@@ -1,7 +1,10 @@
 package command
 
+import "sync"
+
 // Async is the struct returned from async commands.
 type Async struct {
+	sync.Mutex
 	hdl      Handler
 	cmd      Command
 	data     any
@@ -55,14 +58,18 @@ func (as *Async) success(data any) {
 }
 
 func (as *Async) setListener(listener func(as *Async)) {
+	as.Lock()
 	as.listener = listener
+	as.Unlock()
 	if as.done.enabled() {
 		as.notifyListener()
 	}
 }
 
 func (as *Async) notifyListener() {
+	as.Lock()
 	if as.listener != nil {
 		as.listener(as)
 	}
+	as.Unlock()
 }
