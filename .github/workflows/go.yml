@@ -24,16 +24,14 @@ jobs:
       run: go get .
     - name: Build
       run: go build -v ./...
-    - name: Test
-      run: go test -race -v ./...
     - name: Setup Code Climate test-reporter
       run: |
         curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
         chmod +x ./cc-test-reporter
-        ./cc-test-reporter before-build
-    - name: Run and upload Code Climate tests
+    - name: Run tests and upload to Code Climate
       env:
         CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
       run: |
+        ./cc-test-reporter before-build
         go test -race -coverprofile=c.out ./...
         ./cc-test-reporter after-build --exit-code $?
