@@ -36,4 +36,4 @@ jobs:
       run: |
         ./cc-test-reporter before-build
         go test -race -coverprofile=c.out ./...
-        ./cc-test-reporter after-build --exit-code $? --prefix "$GITHUB_WORKSPACE"
+        ./cc-test-reporter after-build --exit-code $? --prefix "github.com/io-da/command"
