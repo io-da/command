@@ -20,8 +20,6 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
-    - name: List Project Files
-      run: ls -R "$GITHUB_WORKSPACE"
     - name: Install dependencies
       run: go get .
     - name: Build
